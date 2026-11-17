@@ -76,7 +76,7 @@ function Intake({ name, setName, onSubmit, error, turno, variant }) {
         </Magnet>
       </div>
       <div className="intake__foot">
-        <span>{desk ? 'Se arma en tu navegador. No guardamos tu nombre.' : 'No guardamos tu nombre.'}</span>
+        <span>No guardamos tu nombre.</span>
         <span className="turno">
           Tu turno{' '}
           <b>
