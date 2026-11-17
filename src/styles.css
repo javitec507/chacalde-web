@@ -76,7 +76,10 @@ button { font: inherit; }
 .cert-on-paper { position: absolute; left: 0; top: 0; width: 816px; height: 528px; transform-origin: 0 0; mix-blend-mode: multiply; pointer-events: none; }
 
 .intake { background: #fff; color: var(--ink); border-radius: 2px; }
-.intake--desk { position: absolute; left: 836px; top: 92px; width: 524px; padding: 38px 44px 28px; box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 30px 60px -20px rgba(0,0,0,.65); }
+.intake--desk { position: absolute; left: 836px; top: 183px; width: 524px; height: 474px; padding: 30px 40px 22px; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 30px 60px -20px rgba(0,0,0,.65); }
+.intake--desk .intake__lead { margin-top: 12px; font-size: 16px; line-height: 1.45; }
+.intake--desk .field-group { margin-top: 18px; }
+.intake--desk .intake__foot { margin-top: auto; padding-top: 12px; }
 .intake h2 { margin: 0; font-size: 44px; line-height: .9; }
 .intake__lead { margin: 16px 0 0; font-size: 17px; line-height: 1.5; color: var(--muted-ink); }
 .field-group { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; }
@@ -105,14 +108,14 @@ button { font: inherit; }
 
 /* mobile hero */
 .mhero { container-type: inline-size; }
-.mhero__lead { margin: 0; padding: 18px 18px 18px; font-size: 15px; line-height: 1.4; color: var(--muted); }
+.mhero__lead { margin: 0; padding: 14px 18px; font-size: 15px; line-height: 1.4; color: var(--muted); }
 .mhero__photo { position: relative; width: 100%; max-width: 560px; margin: 0 auto; aspect-ratio: 4 / 5; overflow: hidden; background: #1a1a1a; }
 .mhero__stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1350px; transform-origin: 0 0; }
 .mhero__stage > img { position: absolute; inset: 0; width: 1080px; height: 1350px; display: block; }
-.intake--stack { max-width: 560px; margin: 12px auto 0; padding: 18px 18px 16px; }
-@media (max-width: 588px) { .intake--stack { margin: 12px 14px 0; } }
+.intake--stack { position: relative; z-index: 2; max-width: 532px; margin: calc(-0.29 * min(100cqw, 560px)) auto 0; padding: 18px 18px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 24px 48px -18px rgba(0,0,0,.7); }
+@media (max-width: 588px) { .intake--stack { margin: calc(-0.29 * 100cqw) 14px 0; } }
 .intake--stack .field-group { margin-top: 0; }
-.intake--stack .btn { height: 56px; font-size: 21px; padding: 0 18px; }
+.intake--stack .btn { height: 56px; font-size: clamp(17px, 5.3cqw, 21px); padding: 0 16px; white-space: nowrap; }
 .intake--stack .field { height: 54px; font-size: 18px; }
 
 /* ---------- Ticker ---------- */
