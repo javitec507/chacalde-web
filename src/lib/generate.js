@@ -101,6 +101,82 @@ async function scenePhoto(scene, name, layer) {
   return out;
 }
 
+// ---------- Big patient name (posts + stories) ----------
+const DISPLAY = (size) => `italic 900 condensed ${size}px "Archivo"`;
+const LABEL = 'DISQUE PACIENTE';
+
+function upper(name) {
+  return name.toLocaleUpperCase('es');
+}
+
+function setSpacing(g, v) {
+  if ('letterSpacing' in g) g.letterSpacing = v;
+}
+
+// Fit the name on one line (or two, if one would be too small) inside maxW.
+function fitName(g, text, maxW, maxSize, minOne, minSize) {
+  g.font = DISPLAY(100);
+  const w100 = g.measureText(text).width || 1;
+  const one = Math.min(maxSize, (100 * maxW) / w100);
+  const spaces = [...text.matchAll(/ /g)].map((m) => m.index);
+  if (one >= minOne || !spaces.length || minOne === undefined) {
+    return { lines: [text], size: Math.max(minSize, one) };
+  }
+  let best = null;
+  for (const i of spaces) {
+    const a = text.slice(0, i);
+    const b = text.slice(i + 1);
+    const wa = g.measureText(a).width;
+    const wb = g.measureText(b).width;
+    const wMax = Math.max(wa, wb);
+    if (!best || wMax < best.wMax) best = { lines: [a, b], wMax };
+  }
+  const two = Math.min(maxSize * 0.86, (100 * maxW) / best.wMax);
+  return two > one ? { lines: best.lines, size: Math.max(minSize, two) } : { lines: [text], size: Math.max(minSize, one) };
+}
+
+function drawLabel(g, text, x, y, color, size = 24, align = 'left') {
+  g.save();
+  g.font = `700 ${size}px "Atkinson Hyperlegible Next"`;
+  setSpacing(g, `${Math.round(size * 0.18)}px`);
+  g.fillStyle = color;
+  g.textAlign = align;
+  g.textBaseline = 'alphabetic';
+  g.fillText(text, x, y);
+  g.restore();
+}
+
+// Post 4:5 — dark strip at the foot of the photo with the patient's name, big.
+function postFrom(photo, name) {
+  const W = photo.width;
+  const H = photo.height;
+  const c = canvas(W, H);
+  const g = c.getContext('2d');
+  g.drawImage(photo, 0, 0);
+  const grad = g.createLinearGradient(0, H - 330, 0, H);
+  grad.addColorStop(0, 'rgba(10,10,10,0)');
+  grad.addColorStop(0.45, 'rgba(10,10,10,0.72)');
+  grad.addColorStop(1, 'rgba(10,10,10,0.94)');
+  g.fillStyle = grad;
+  g.fillRect(0, H - 330, W, 330);
+
+  const text = upper(name);
+  const maxW = W - 144;
+  g.save();
+  const { size } = fitName(g, text, maxW, 104, undefined, 40);
+  const base = H - 64;
+  g.font = DISPLAY(size);
+  g.fillStyle = '#FFFFFF';
+  g.textBaseline = 'alphabetic';
+  g.fillText(text, 72, base, maxW);
+  g.restore();
+
+  const labelY = base - size * 0.76 - 24;
+  drawLabel(g, LABEL, 72, labelY, 'rgba(255,255,255,0.62)', 24);
+  drawLabel(g, 'CHACALDE.COM', W - 72, labelY, 'rgba(255,255,255,0.62)', 24, 'right');
+  return c;
+}
+
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -111,7 +187,7 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-async function storyFrom(post, turno) {
+async function storyFrom(photo, name, turno) {
   const [logo, icon] = await Promise.all([loadImage('/img/logo-white.png'), loadImage('/img/icon.png')]);
   const c = canvas(1080, 1920);
   const g = c.getContext('2d');
@@ -140,21 +216,26 @@ async function storyFrom(post, turno) {
   g.textBaseline = 'middle';
   g.fillText(label, cx + 46, 134);
 
-  // headline, one line across
-  const text = 'HASTA NUEVO AVISO.';
-  if ('fontStretch' in g) g.fontStretch = 'condensed';
+  // the patient's name is the headline
+  drawLabel(g, LABEL, 72, 232, 'rgba(255,255,255,0.55)', 26);
+  const text = upper(name);
+  g.save();
+  const { lines, size } = fitName(g, text, 936, 132, 84, 44);
+  g.font = DISPLAY(size);
+  g.fillStyle = '#FFFFFF';
   g.textBaseline = 'alphabetic';
-  g.font = 'italic 900 100px "Archivo"';
-  const w100 = g.measureText(text).width;
-  const size = Math.min(130, (100 * 930) / w100);
-  g.font = `italic 900 ${size}px "Archivo"`;
-  g.fillText(text, 72, 196 + size * 0.8);
-  if ('fontStretch' in g) g.fontStretch = 'normal';
+  let y = 258 + size * 0.74;
+  lines.forEach((ln, i) => {
+    if (i) y += size * 0.92;
+    g.fillText(ln, 72, y, 936);
+  });
+  g.restore();
 
-  g.drawImage(post, 0, 316, 1080, 1350);
+  const postY = Math.round(Math.min(470, y + 40));
+  g.drawImage(photo, 0, postY, 1080, 1350);
 
   g.save();
-  g.translate(1080 - 56 - 95, 1500 + 99);
+  g.translate(1080 - 56 - 95, postY + 1350 - 67);
   g.rotate((8 * Math.PI) / 180);
   g.shadowColor = 'rgba(0,0,0,0.5)';
   g.shadowBlur = 18;
@@ -164,7 +245,7 @@ async function storyFrom(post, turno) {
 
   // cross + url
   g.fillStyle = '#FFFFFF';
-  const x0 = 72, y0 = 1712;
+  const x0 = 72, y0 = postY + 1350 + 46;
   const k = 30 / 24;
   g.beginPath();
   [[9, 2], [15, 2], [15, 9], [22, 9], [22, 15], [15, 15], [15, 22], [9, 22], [9, 15], [2, 15], [2, 9], [9, 9]].forEach(([x, y], i) =>
@@ -217,10 +298,11 @@ export async function generateAll(name, turno, onProgress = () => {}) {
   const total = SCENES.scenes.length * 2 + 1;
   for (const scene of SCENES.scenes) {
     const meta = PHOTOS.find((p) => p.id === scene.id);
-    const post = await scenePhoto(scene, name, layer);
+    const photo = await scenePhoto(scene, name, layer);
+    const post = postFrom(photo, name);
     const postBlob = await toBlob(post, 'image/jpeg', 0.9);
     onProgress(++done / total);
-    const story = await storyFrom(post, turno);
+    const story = await storyFrom(photo, name, turno);
     const storyBlob = await toBlob(story, 'image/jpeg', 0.9);
     onProgress(++done / total);
     items.push({ ...meta, post: postBlob, story: storyBlob });
