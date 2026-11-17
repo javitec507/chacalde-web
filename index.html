@@ -22,9 +22,11 @@
     <link rel="preload" href="/fonts/archivo-latin-standard-italic.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/atkinson-hyperlegible-next-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/doto-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/img/logo-white.png" as="image" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="loader" role="status" aria-label="Abriendo el consultorio"><div class="loader__top"><span class="loader__dot" aria-hidden="true"></span><span>En consulta</span></div><div class="loader__center"><img class="loader__logo" src="/img/logo-white.png" width="800" height="286" alt="Chacalde" /><p class="loader__room">Sala de espera · Disque Consultorios</p><div class="loader__led" aria-hidden="true"><span class="loader__num">000</span><span class="loader__pct">%</span></div><div class="loader__bar" aria-hidden="true"><span style="transform: scaleX(0)"></span></div><p class="loader__label">Abriendo el consultorio…</p></div><p class="loader__fine">Contenido de humor. Esta nota no es válida para ningún trámite.</p></div></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
