@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import BlurText from './reactbits/BlurText.jsx';
 import ScrollVelocity from './reactbits/ScrollVelocity.jsx';
@@ -89,6 +89,56 @@ function Intake({ name, setName, onSubmit, error, turno, variant }) {
   );
 }
 
+// Where the sheet of paper sits in the desk photo (1440 × 823 px).
+const PAPER = { top: 183, height: 474 };
+const DESK_W = 1440;
+const DESK_H = 823;
+
+// Full-width desk photo. On first view it trims a bit of the top so the sheet and
+// the admission form sit centered in what's left of the screen; the sides never crop.
+function DeskStage({ children }) {
+  const ref = useRef(null);
+  const [view, setView] = useState({ scale: 1, crop: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      const scale = el.clientWidth / DESK_W || 1;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const avail = (window.innerHeight - top) / scale;
+      const want = Math.max(28, (avail - PAPER.height) * 0.42);
+      const crop = Math.round(Math.min(150, Math.max(0, PAPER.top - want)));
+      setView((v) => (v.scale === scale && v.crop === crop ? v : { scale, crop }));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  const { scale, crop } = view;
+  return (
+    <div ref={ref} className="desk" style={{ height: (DESK_H - crop) * scale }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: DESK_W,
+          height: DESK_H,
+          transform: `translateY(${-crop * scale}px) scale(${scale})`,
+          transformOrigin: '0 0'
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Hero(props) {
   const wide = useMedia('(min-width: 1100px)', true);
   const deskMatrix = useMemo(() => cssMatrix3d(816, 528, DESK_QUAD), []);
@@ -101,13 +151,13 @@ function Hero(props) {
           <h1 id="h-hero" className="sr-only">Certificado de No Incapacidad</h1>
           <Meta />
         </div>
-        <Scaled w={1440} h={823} className="desk">
+        <DeskStage>
           <img className="desk__photo" src="/img/escritorio-ancho.jpg" width="1440" height="823" alt="Escritorio de consultorio de noche, visto desde arriba, con la nota y tu nombre" fetchpriority="high" />
           <div className="cert-on-paper" style={{ transform: deskMatrix }}>
             <Certificate name={props.name} />
           </div>
           <Intake {...props} variant="desk" />
-        </Scaled>
+        </DeskStage>
       </section>
     );
   }
