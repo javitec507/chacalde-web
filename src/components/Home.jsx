@@ -175,7 +175,7 @@ function Ticker() {
       </div>
       <div className="ticker__row ticker__row--dark">
         <ScrollVelocity
-          texts={[<TickerRow key="b" items={['No firma', 'Disque paciente', 'No ha sido evaluado', 'Yo, Chacalde, certifico', 'Razones no relacionadas']} />]}
+          texts={[<TickerRow key="b" items={['No firma', 'Disque paciente', 'No ha sido evaluado', 'Razones no relacionadas']} />]}
           velocity={-50}
           numCopies={4}
           parallaxClassName="parallax"

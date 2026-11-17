@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import Loader from './Loader.jsx';
 import DecryptedText from './reactbits/DecryptedText.jsx';
 import GlareHover from './reactbits/GlareHover.jsx';
 import Certificate from './Certificate.jsx';
@@ -28,8 +29,14 @@ export default function Result({ name, turno, onBack }) {
   const urls = useObjectUrls(result);
   const printFrame = useRef(null);
 
+  // The waiting room stays up until the files are made (and at least a moment, so it reads).
+  const [reveal, setReveal] = useState(false);
+  const started = useRef(0);
+
   useEffect(() => {
     let alive = true;
+    started.current = performance.now();
+    setReveal(false);
     setResult(null);
     setError('');
     setProgress(0);
@@ -57,6 +64,13 @@ export default function Result({ name, turno, onBack }) {
   );
 
   const ready = Boolean(result && urls);
+
+  useEffect(() => {
+    if (!(ready || error)) return undefined;
+    const wait = Math.max(500, 1600 - (performance.now() - started.current));
+    const t = setTimeout(() => setReveal(true), wait);
+    return () => clearTimeout(t);
+  }, [ready, error]);
   const base = result?.base || 'chacalde';
 
   const onPdf = () => ready && download(result.pdf, `${base}-certificado.pdf`);
@@ -100,6 +114,19 @@ export default function Result({ name, turno, onBack }) {
   const story = fmt === 'story';
 
   return (
+    <>
+      <AnimatePresence>
+        {!reveal && (
+          <Loader
+            key="gen"
+            progress={ready ? 1 : progress * 0.96}
+            label="Llenando tu nota"
+            sub="Firmando, sellando y tomando las fotos del consultorio"
+            turno={turno}
+          />
+        )}
+      </AnimatePresence>
+      {reveal && (
     <main className="wrap result" id="top">
       <div className="result__top">
         <div className="led" role="status">
@@ -240,5 +267,7 @@ export default function Result({ name, turno, onBack }) {
       </section>
       <iframe ref={printFrame} title="Imprimir certificado" style={{ position: 'absolute', width: 0, height: 0, border: 0, visibility: 'hidden' }} />
     </main>
+      )}
+    </>
   );
 }
