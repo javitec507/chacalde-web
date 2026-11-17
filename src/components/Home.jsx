@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import SplitText from './reactbits/SplitText.jsx';
 import BlurText from './reactbits/BlurText.jsx';
 import ScrollVelocity from './reactbits/ScrollVelocity.jsx';
 import TiltedCard from './reactbits/TiltedCard.jsx';
@@ -26,7 +25,6 @@ const MOBILE_QUAD = [
   [86.5, 974.5]
 ];
 
-const HEADLINE = 'HASTA NUEVO AVISO.';
 const ease = [0.16, 1, 0.3, 1];
 
 function Intake({ name, setName, onSubmit, error, turno, variant }) {
@@ -100,11 +98,7 @@ function Hero(props) {
     return (
       <section aria-labelledby="h-hero">
         <div className="hero__band">
-          <h1 id="h-hero" className="display hero__title" aria-label="Hasta nuevo aviso.">
-            <span aria-hidden="true">
-              <SplitText text={HEADLINE} tag="span" textAlign="left" effect="skew" delay={38} duration={1.1} trigger="load" />
-            </span>
-          </h1>
+          <h1 id="h-hero" className="sr-only">Certificado de No Incapacidad</h1>
           <Meta />
         </div>
         <Scaled w={1440} h={823} className="desk">
@@ -120,11 +114,7 @@ function Hero(props) {
 
   return (
     <section aria-labelledby="h-hero-m" className="mhero">
-      <h1 id="h-hero-m" className="display mhero__title" aria-label="Hasta nuevo aviso.">
-        <span aria-hidden="true">
-          <SplitText text={HEADLINE} tag="span" textAlign="left" effect="skew" delay={38} duration={1.1} trigger="load" />
-        </span>
-      </h1>
+      <h1 id="h-hero-m" className="sr-only">Certificado de No Incapacidad</h1>
       <p className="mhero__lead">Tu Certificado de No Incapacidad, con tu nombre.</p>
       <div className="mhero__photo">
         <Scaled w={1080} h={1350}>
