@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { Header, Footer } from './components/Chrome.jsx';
 import Home from './components/Home.jsx';
-const Result = lazy(() => import('./components/Result.jsx'));
+import Loader, { useBoot } from './components/Loader.jsx';
+const loadResult = () => import('./components/Result.jsx');
+const Result = lazy(loadResult);
 import { randomTurno } from './components/ui.jsx';
 
 export default function App() {
@@ -9,6 +12,12 @@ export default function App() {
   const [view, setView] = useState('inicio');
   const [submitted, setSubmitted] = useState('');
   const [turno, setTurno] = useState(randomTurno);
+  const boot = useBoot();
+
+  // Once the site is open, fetch the result page in the background.
+  useEffect(() => {
+    if (boot.ready) loadResult();
+  }, [boot.ready]);
 
   // Browser back button returns to the form.
   useEffect(() => {
@@ -37,12 +46,23 @@ export default function App() {
 
   return (
     <>
+      <AnimatePresence>{!boot.ready && <Loader key="boot" progress={boot.progress} />}</AnimatePresence>
+      {boot.ready && (
+        <Site view={view} back={back} submitted={submitted} turno={turno} name={name} setName={setName} submit={submit} />
+      )}
+    </>
+  );
+}
+
+function Site({ view, back, submitted, turno, name, setName, submit }) {
+  return (
+    <>
       <a className="sr-only" href="#top">
         Saltar al contenido
       </a>
       <Header onBack={view === 'alta' ? back : null} />
       {view === 'alta' ? (
-        <Suspense fallback={<main className="wrap result" id="top"><p className="lead">Atendiendo…</p></main>}>
+        <Suspense fallback={<Loader label="Llenando tu nota" sub="Firmando, sellando y tomando las fotos del consultorio" turno={turno} />}>
           <Result name={submitted} turno={turno} onBack={back} />
         </Suspense>
       ) : (
