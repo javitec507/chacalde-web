@@ -310,7 +310,7 @@ function Photos() {
             >
               {hover ? (
                 <TiltedCard
-                  imageSrc={`/img/historia-${p.id}.jpg`}
+                  imageSrc={`/img/historia-${p.id}-v2.jpg`}
                   altText={`Historia de ejemplo: ${p.label}`}
                   containerWidth="100%"
                   containerHeight="auto"
@@ -329,7 +329,7 @@ function Photos() {
                   shadow={0.6}
                 />
               ) : (
-                <img className="photo-plain" src={`/img/historia-${p.id}.jpg`} alt={`Historia de ejemplo: ${p.label}`} loading="lazy" width="720" height="1280" />
+                <img className="photo-plain" src={`/img/historia-${p.id}-v2.jpg`} alt={`Historia de ejemplo: ${p.label}`} loading="lazy" width="720" height="1280" />
               )}
               <figcaption className="photo-cap">
                 <b>{p.label}</b>
