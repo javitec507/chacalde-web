@@ -11,11 +11,21 @@ npm run dev
 
 ## Producción
 
-`Dockerfile` construye con Vite y sirve `dist/` con nginx (puerto 80). En Coolify: *Build pack* = Dockerfile, puerto expuesto 80.
+`Dockerfile` construye con Vite y corre `server/server.mjs` (Node, sin dependencias) como usuario `node`, en el puerto 80. El servidor:
+
+- sirve `dist/` desde memoria (Brotli/gzip, ETag) con cabeceras de seguridad (CSP, HSTS, X-Frame-Options, nosniff…);
+- cuenta de forma anónima visitas, certificados, PDF, impresiones, fotos, ZIP y compartidos (`POST /api/e`), por hora, en `/data/metrics.json`;
+- muestra el panel en `/admin` (contraseña, sin JavaScript) y exporta `/admin/export.csv`.
+
+En Coolify: *Build pack* = Dockerfile, puerto 80, almacenamiento persistente montado en `/data` y la variable `ADMIN_PASSWORD` (12+ caracteres). Sin esa variable el panel queda deshabilitado; el sitio y el conteo siguen funcionando.
+
+No se guardan nombres, IP ni cookies de visitantes. Las visitas repetidas de un mismo navegador en 30 minutos cuentan una vez y cada navegador suma como máximo 20 eventos de un mismo tipo cada 10 minutos.
 
 ## Estructura
 
 - `src/components/Certificate.jsx` – la nota (816×528 px = media carta).
 - `src/lib/generate.js` – fotos (nombre en perspectiva sobre `public/scenes/*.jpg`), historias 9:16, PDF (`public/template.pdf` + nombre con pdf-lib) y ZIP.
 - `src/data/scenes.json` – esquinas de la nota en cada foto.
+- `src/lib/track.js` – envía el nombre de la acción (`visit`, `cert`, `pdf`…) al contador; nada sobre la persona.
+- `server/` – servidor, contador (`metrics.mjs`) y panel (`admin.mjs`).
 - `src/components/reactbits/` – componentes de [React Bits](https://reactbits.dev) (licencia en `LICENSE-react-bits.md`).

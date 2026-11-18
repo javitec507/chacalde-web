@@ -6,9 +6,15 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-# --- serve ---
-FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# --- run: static site + anonymous counters + /admin (Node, no dependencies) ---
+FROM node:22-alpine
+RUN apk add --no-cache su-exec
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY server ./server
+COPY docker-start.sh /usr/local/bin/chacalde-start
+RUN chmod +x /usr/local/bin/chacalde-start && mkdir -p /data && chown node:node /data
+ENV NODE_ENV=production PORT=80 DATA_DIR=/data
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s CMD wget -qO- http://127.0.0.1/healthz || exit 1
+ENTRYPOINT ["chacalde-start"]
