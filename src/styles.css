@@ -60,6 +60,11 @@ button { font: inherit; }
   .brand span, .nav, .chip__txt { display: none; }
   .chip { margin-left: auto; padding: 6px 10px; }
 }
+.sound-toggle { flex: none; margin-left: -20px; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; color: #fff; background: var(--ink-2); border: 1px solid #2a2a2a; border-radius: 4px; cursor: pointer; transition: color .2s, border-color .2s; }
+.sound-toggle[aria-pressed="false"] { color: var(--muted); }
+.sound-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (hover: hover) { .sound-toggle:hover { border-color: #5a5a5a; } }
+@media (max-width: 900px) { .sound-toggle { width: 36px; height: 36px; } }
 .back-link { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #fff; text-decoration: none; font-weight: 700; font-size: 15px; padding: 10px 0; background: none; border: 0; cursor: pointer; }
 
 /* ---------- Hero ---------- */
