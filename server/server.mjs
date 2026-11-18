@@ -32,12 +32,13 @@ const TYPES = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.pdf': 'application/pdf',
+  '.mp3': 'audio/mpeg',
   '.txt': 'text/plain; charset=utf-8',
   '.xml': 'application/xml; charset=utf-8',
   '.webmanifest': 'application/manifest+json'
 };
 const COMPRESS = new Set(['.html', '.js', '.css', '.json', '.svg', '.ttf', '.pdf', '.txt', '.xml']);
-const LONG_CACHE = new Set(['.jpg', '.jpeg', '.png', '.svg', '.woff2', '.ttf', '.pdf', '.ico']);
+const LONG_CACHE = new Set(['.jpg', '.jpeg', '.png', '.svg', '.woff2', '.ttf', '.pdf', '.ico', '.mp3']);
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
