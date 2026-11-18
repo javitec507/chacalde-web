@@ -45,6 +45,20 @@ export const Printer = ({ size = 18 }) => (
     <path d="M7 14h10v6H7z" />
   </svg>
 );
+export const SoundOn = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="square" aria-hidden="true">
+    <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none" />
+    <path d="M16.5 8.5a5 5 0 0 1 0 7" />
+    <path d="M19 6a8.5 8.5 0 0 1 0 12" />
+  </svg>
+);
+export const SoundOff = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="square" aria-hidden="true">
+    <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none" />
+    <path d="M16 9.5l5 5" />
+    <path d="M21 9.5l-5 5" />
+  </svg>
+);
 export const Cross = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
     <path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z" fill="currentColor" />

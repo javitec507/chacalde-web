@@ -1,4 +1,19 @@
-import { ArrowBack } from './ui.jsx';
+import { useSyncExternalStore } from 'react';
+import { ArrowBack, SoundOn, SoundOff } from './ui.jsx';
+import { isMuted, play, setMuted, subscribe } from '../lib/sound.js';
+
+function SoundToggle() {
+  const muted = useSyncExternalStore(subscribe, isMuted, () => false);
+  const toggle = () => {
+    setMuted(!muted);
+    if (muted) play('tick');
+  };
+  return (
+    <button type="button" className="sound-toggle" aria-pressed={!muted} aria-label="Sonido" title={muted ? 'Activar sonido' : 'Silenciar'} onClick={toggle}>
+      {muted ? <SoundOff /> : <SoundOn />}
+    </button>
+  );
+}
 
 export function Header({ onBack }) {
   return (
@@ -30,6 +45,7 @@ export function Header({ onBack }) {
             </span>
           </>
         )}
+        <SoundToggle />
       </div>
     </header>
   );

@@ -8,6 +8,7 @@ import { Download, Printer, Share, Scaled } from './ui.jsx';
 import { download, generateAll, makeZip, shareFiles, PHOTOS } from '../lib/generate.js';
 import { firstName } from '../lib/name.js';
 import { track } from '../lib/track.js';
+import { announce, play, stopAll } from '../lib/sound.js';
 
 const ease = [0.16, 1, 0.3, 1];
 
@@ -81,6 +82,29 @@ export default function Result({ name, turno, onBack }) {
 
   const ready = Boolean(result && urls);
 
+  // Sounds: the pen signs while the note is filled in, the stamp seals it once it's done,
+  // then the photo click and the counter calls your number (never your name).
+  const penEnds = useRef(0);
+  useEffect(() => {
+    play('pen', { delay: 0.1 });
+    penEnds.current = performance.now() + 1100;
+    return () => stopAll();
+  }, [name, turno]);
+  useEffect(() => {
+    if (ready) play('stamp', { delay: Math.max(0, penEnds.current - performance.now()) / 1000 });
+  }, [ready]);
+  useEffect(() => {
+    if (!reveal || error) return;
+    play('shutter', { delay: 0.3 });
+    announce(turno, { delay: 0.75 });
+  }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stamped = useRef(false);
+  const onStampInView = () => {
+    if (stamped.current) return;
+    stamped.current = true;
+    play('stamp', { delay: 0.36, gain: 0.8 });
+  };
+
   useEffect(() => {
     if (!(ready || error)) return undefined;
     const wait = Math.max(500, 1600 - (performance.now() - started.current));
@@ -91,11 +115,13 @@ export default function Result({ name, turno, onBack }) {
 
   const onPdf = () => {
     if (!ready) return;
+    play('tick');
     track('pdf');
     download(result.pdf, `${base}-certificado.pdf`);
   };
   const onPrint = () => {
     if (!ready) return;
+    play('tick');
     track('print');
     const f = printFrame.current;
     f.onload = () => {
@@ -114,6 +140,7 @@ export default function Result({ name, turno, onBack }) {
   // Share files through the phone's share sheet (Instagram, WhatsApp…); where that isn't possible, download them.
   const share = async (files, fallback) => {
     if (!ready) return;
+    play('tick');
     try {
       setBusy('share');
       const ok = await shareFiles(files);
@@ -140,11 +167,13 @@ export default function Result({ name, turno, onBack }) {
     );
   const downloadOne = (i, kind) => {
     if (!ready) return;
+    play('shutter', { gain: 0.7 });
     track('photo');
     download(kind === 'story' ? result.items[i].story : result.items[i].post, fileOf(result.items[i], i, kind).name);
   };
   const onZip = async () => {
     if (!ready) return;
+    play('tick');
     setBusy('zip');
     track('zip');
     try {
@@ -221,7 +250,10 @@ export default function Result({ name, turno, onBack }) {
             {PHOTOS.map((p, i) => {
               const it = urls?.items.find((x) => x.id === p.id);
               return (
-                <button key={p.id} type="button" role="radio" aria-checked={i === sel} onClick={() => setSel(i)} disabled={!it}>
+                <button key={p.id} type="button" role="radio" aria-checked={i === sel} onClick={() => {
+                    if (i !== sel) play('tick');
+                    setSel(i);
+                  }} disabled={!it}>
                   {it ? <img src={it.storyUrl} alt="" width={1080} height={1920} /> : <span className="out-skel" />}
                   <span className="share__thumb-label">{p.label}</span>
                 </button>
@@ -300,6 +332,7 @@ export default function Result({ name, turno, onBack }) {
               initial={{ opacity: 0, scale: 2.6, rotate: -14 }}
               whileInView={{ opacity: 0.82, scale: 1, rotate: -8 }}
               viewport={{ once: true, margin: '-80px' }}
+              onViewportEnter={onStampInView}
               transition={{ delay: 0.3, type: 'spring', stiffness: 520, damping: 18, mass: 0.9 }}
             >
               <b>ATENDIDO</b>
