@@ -69,7 +69,7 @@ function Site({ view, back, submitted, turno, name, setName, submit }) {
       </a>
       <Header onBack={view === 'alta' ? back : null} />
       {view === 'alta' ? (
-        <Suspense fallback={<Loader label="Llenando tu nota" sub="Firmando, sellando y tomando las fotos del consultorio" turno={turno} />}>
+        <Suspense fallback={<Loader label="Llenando tu nota" sub="Firmando, sellando y armando tus historias" turno={turno} />}>
           <Result name={submitted} turno={turno} onBack={back} />
         </Suspense>
       ) : (
