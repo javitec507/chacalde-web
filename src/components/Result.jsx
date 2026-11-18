@@ -11,6 +11,19 @@ import { track } from '../lib/track.js';
 
 const ease = [0.16, 1, 0.3, 1];
 
+// Can this device share image files (phones: yes; most desktops: no)?
+let shareSupport;
+function canShareFiles() {
+  if (shareSupport === undefined) {
+    try {
+      shareSupport = Boolean(navigator.canShare && navigator.canShare({ files: [new File([''], 'x.jpg', { type: 'image/jpeg' })] }));
+    } catch {
+      shareSupport = false;
+    }
+  }
+  return shareSupport;
+}
+
 function useObjectUrls(result) {
   return useMemo(() => {
     if (!result) return null;
@@ -25,7 +38,9 @@ export default function Result({ name, turno, onBack }) {
   const [result, setResult] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
-  const [fmt, setFmt] = useState('post');
+  const [sel, setSel] = useState(0);
+  const ctaRef = useRef(null);
+  const [bar, setBar] = useState(false);
   const [busy, setBusy] = useState('');
   const urls = useObjectUrls(result);
   const printFrame = useRef(null);
@@ -93,23 +108,40 @@ export default function Result({ name, turno, onBack }) {
     };
     f.src = urls.pdf;
   };
-  const filesFor = (kind) =>
-    result.items.map((it, i) => new File([kind === 'story' ? it.story : it.post], `${base}-${kind === 'story' ? 'historia' : 'post'}-${i + 1}.jpg`, { type: 'image/jpeg' }));
-  const onShare = async () => {
+  const fileOf = (it, i, kind) =>
+    new File([kind === 'story' ? it.story : it.post], `${base}-${kind === 'story' ? 'historia' : 'post'}-${i + 1}-${it.id}.jpg`, { type: 'image/jpeg' });
+
+  // Share files through the phone's share sheet (Instagram, WhatsApp…); where that isn't possible, download them.
+  const share = async (files, fallback) => {
     if (!ready) return;
     try {
       setBusy('share');
-      const ok = await shareFiles(filesFor(fmt), 'Hasta nuevo aviso. Saca el tuyo en chacalde.com');
+      const ok = await shareFiles(files);
       if (ok) track('share');
-      else {
-        track('zip');
-        download(await makeZip(result), `${base}.zip`);
-      }
+      else await fallback();
     } catch (e) {
       if (e?.name !== 'AbortError') console.error(e);
     } finally {
       setBusy('');
     }
+  };
+  const shareStory = (i) =>
+    share([fileOf(result.items[i], i, 'story')], async () => {
+      track('photo');
+      download(result.items[i].story, fileOf(result.items[i], i, 'story').name);
+    });
+  const shareAll = (kind) =>
+    share(
+      result.items.map((it, i) => fileOf(it, i, kind)),
+      async () => {
+        track('zip');
+        download(await makeZip(result), `${base}.zip`);
+      }
+    );
+  const downloadOne = (i, kind) => {
+    if (!ready) return;
+    track('photo');
+    download(kind === 'story' ? result.items[i].story : result.items[i].post, fileOf(result.items[i], i, kind).name);
   };
   const onZip = async () => {
     if (!ready) return;
@@ -122,7 +154,18 @@ export default function Result({ name, turno, onBack }) {
     }
   };
 
-  const story = fmt === 'story';
+  // Phones: while the main share button is still below the screen, keep a copy of it pinned at the bottom.
+  useEffect(() => {
+    if (!reveal) return undefined;
+    const cta = ctaRef.current;
+    if (!cta || !('IntersectionObserver' in window)) return undefined;
+    const io = new IntersectionObserver(([e]) => setBar(!e.isIntersecting && e.boundingClientRect.top > 0));
+    io.observe(cta);
+    return () => io.disconnect();
+  }, [reveal]);
+
+  const current = urls?.items[sel];
+  const shareLabel = canShareFiles() ? 'Compartir en historias' : 'Descargar historia';
 
   return (
     <>
@@ -132,7 +175,7 @@ export default function Result({ name, turno, onBack }) {
             key="gen"
             progress={ready ? 1 : progress * 0.96}
             label="Llenando tu nota"
-            sub="Firmando, sellando y tomando las fotos del consultorio"
+            sub="Firmando, sellando y armando tus historias"
             turno={turno}
           />
         )}
@@ -149,67 +192,8 @@ export default function Result({ name, turno, onBack }) {
         <motion.div style={{ flex: '1 1 520px', minWidth: 0 }} initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.15, ease }}>
           <h1 className="display result__title">{firstName(name)}, ya estás de alta.</h1>
           <p className="lead" style={{ marginTop: 16 }}>
-            Tu Certificado de No Incapacidad está listo. Descárgalo, compártelo y nos vemos el 19 (o no).
+            Tu historia está lista, con tu nombre. Elige una de las 4 y súbela a Instagram o WhatsApp.
           </p>
-        </motion.div>
-      </div>
-
-      <div className="result__grid">
-        <motion.div className="preview" initial={{ y: 0 }} animate={{ y: [0, 0, 3, 0] }} transition={{ duration: 0.35, delay: 1.3, times: [0, 0.01, 0.4, 1] }}>
-          <div className="preview__box">
-            <Scaled w={816} h={528}>
-              <Certificate name={name} />
-            </Scaled>
-          </div>
-          <motion.div
-            className="stamp"
-            aria-hidden="true"
-            initial={{ opacity: 0, scale: 2.6, rotate: -14 }}
-            animate={{ opacity: 0.82, scale: 1, rotate: -8 }}
-            transition={{ delay: 1, type: 'spring', stiffness: 520, damping: 18, mass: 0.9 }}
-          >
-            <b>ATENDIDO</b>
-            <span>19 NOV 2026</span>
-          </motion.div>
-        </motion.div>
-
-        <motion.div className="receipt" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.4, ease }}>
-          <h2 className="display">Tu nota</h2>
-          <dl>
-            <dt>Paciente</dt>
-            <dd>
-              <b>{name}</b>
-            </dd>
-            <dt>Desde</dt>
-            <dd>19 de noviembre de 2026</dd>
-            <dt>Observación</dt>
-            <dd>Hasta pronta mejoría</dd>
-            <dt>Turno</dt>
-            <dd className="led-ink">№ {turno}</dd>
-            <dt>Firma</dt>
-            <dd>No firma</dd>
-            <dt style={{ borderBottom: '1px solid #e0e0e0' }}>Validez</dt>
-            <dd style={{ borderBottom: '1px solid #e0e0e0' }}>Ninguna</dd>
-          </dl>
-          <div className="receipt__actions">
-            <button type="button" className="btn btn--ink" onClick={onPdf} disabled={!ready}>
-              {ready ? 'Descargar PDF' : `Preparando… ${Math.round(progress * 100)}%`} <Download size={22} />
-            </button>
-            <div className="receipt__row">
-              <button type="button" className="btn btn--line" onClick={onPrint} disabled={!ready}>
-                <Printer /> Imprimir
-              </button>
-              <button type="button" className="btn btn--line" onClick={onShare} disabled={!ready || busy === 'share'}>
-                <Share /> Compartir
-              </button>
-            </div>
-            <p className="receipt__fine">
-              PDF media carta (8.5 × 5.5 in), una página.{' '}
-              <button type="button" onClick={onBack}>
-                Corregir nombre
-              </button>
-            </p>
-          </div>
         </motion.div>
       </div>
 
@@ -219,66 +203,162 @@ export default function Result({ name, turno, onBack }) {
         </p>
       )}
 
-      <section className="result__photos" aria-labelledby="h-out">
+      <section className="share" aria-labelledby="h-share">
+        <motion.div className="share__stage" initial={{ opacity: 0, y: 40, rotate: -2 }} animate={{ opacity: 1, y: 0, rotate: 0 }} transition={{ duration: 0.9, delay: 0.25, ease }}>
+          <div className="share__phone">
+            {current ? (
+              <img key={current.storyUrl} src={current.storyUrl} alt={`Tu historia ${current.label}, con tu nombre`} width={1080} height={1920} />
+            ) : (
+              <div className="out-skel">Preparando…</div>
+            )}
+          </div>
+        </motion.div>
+
+        <motion.div className="share__side" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.4, ease }}>
+          <h2 id="h-share" className="display">Tu historia</h2>
+          <p className="share__lead">Formato 9:16, lista para subir. Toca otra foto para cambiarla.</p>
+          <div className="share__thumbs" role="radiogroup" aria-label="Elige tu historia">
+            {PHOTOS.map((p, i) => {
+              const it = urls?.items.find((x) => x.id === p.id);
+              return (
+                <button key={p.id} type="button" role="radio" aria-checked={i === sel} onClick={() => setSel(i)} disabled={!it}>
+                  {it ? <img src={it.storyUrl} alt="" width={1080} height={1920} /> : <span className="out-skel" />}
+                  <span className="share__thumb-label">{p.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button ref={ctaRef} type="button" className="btn btn--paper share__cta" onClick={() => shareStory(sel)} disabled={!ready || busy === 'share'}>
+            {shareLabel} {canShareFiles() ? <Share size={24} /> : <Download size={22} />}
+          </button>
+          <div className="share__row">
+            <button type="button" className="btn btn--line-light" onClick={() => downloadOne(sel, 'story')} disabled={!ready}>
+              <Download /> Descargar esta
+            </button>
+            <button type="button" className="btn btn--line-light" onClick={() => shareAll('story')} disabled={!ready || busy === 'share'}>
+              <Share /> Las 4 historias
+            </button>
+          </div>
+          <p className="share__hint">
+            {canShareFiles()
+              ? 'En el menú elige Instagram → Historia, o WhatsApp → Mi estado.'
+              : 'Desde la compu se descarga: pásala a tu teléfono y súbela a tus historias.'}
+          </p>
+        </motion.div>
+      </section>
+
+      <section className="result__photos" aria-labelledby="h-feed">
         <div className="result__photos-head">
           <div>
-            <h2 id="h-out" className="display">Fotos para compartir</h2>
-            <p>Con tu nombre ya puesto. Toca la flecha para bajar cada una.</p>
+            <h2 id="h-feed" className="display">También para el feed</h2>
+            <p>Las mismas 4 fotos en formato post (4:5), con tu nombre en grande.</p>
           </div>
-          <div className="seg" role="group" aria-label="Formato de las fotos">
-            <button type="button" aria-pressed={!story} onClick={() => setFmt('post')}>
-              Post 4:5
-            </button>
-            <button type="button" aria-pressed={story} onClick={() => setFmt('story')}>
-              Historia 9:16
-            </button>
-          </div>
+          <button type="button" className="btn btn--line-light result__feed-share" onClick={() => shareAll('post')} disabled={!ready || busy === 'share'}>
+            <Share /> {canShareFiles() ? 'Compartir los 4 posts' : 'Descargar los 4 posts'}
+          </button>
         </div>
-
-        <div className="out-grid">
+        <div className="out-grid out-grid--small">
           {PHOTOS.map((p, i) => {
             const it = urls?.items.find((x) => x.id === p.id);
-            const src = it ? (story ? it.storyUrl : it.postUrl) : null;
             return (
-              <motion.figure key={p.id} initial={{ opacity: 0, y: 60, scale: 0.95 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.8, delay: i * 0.07, ease }}>
-                {src ? (
-                  <GlareHover borderRadius="0px" glareOpacity={0.35} glareSize={40} width="100%" height="auto" background="transparent">
-                    <img src={src} alt={`${p.label}, ${story ? 'historia' : 'post'} con tu nombre`} width={1080} height={story ? 1920 : 1350} />
+              <motion.figure key={p.id} initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8, delay: i * 0.06, ease }}>
+                {it ? (
+                  <GlareHover borderRadius="0px" glareOpacity={0.3} glareSize={40} width="100%" height="auto" background="transparent">
+                    <img src={it.postUrl} alt={`${p.label}, post con tu nombre`} width={1080} height={1350} loading="lazy" />
                   </GlareHover>
                 ) : (
-                  <div className="out-skel" style={{ aspectRatio: story ? '9 / 16' : '4 / 5' }}>
+                  <div className="out-skel" style={{ aspectRatio: '4 / 5' }}>
                     Preparando…
                   </div>
                 )}
                 {it && (
-                  <button
-                    type="button"
-                    className="dl"
-                    aria-label={`Descargar ${p.label}`}
-                    onClick={() => {
-                      track('photo');
-                      download(story ? it.story : it.post, `${base}-${story ? 'historia' : 'post'}-${i + 1}-${p.id}.jpg`);
-                    }}
-                  >
+                  <button type="button" className="dl" aria-label={`Descargar post ${p.label}`} onClick={() => downloadOne(i, 'post')}>
                     <Download />
                   </button>
                 )}
                 <figcaption className="out-cap">
                   <b>{p.label}</b>
-                  <span>{story ? '1080 × 1920' : '1080 × 1350'}</span>
+                  <span>1080 × 1350</span>
                 </figcaption>
               </motion.figure>
             );
           })}
         </div>
+      </section>
 
-        <div className="result__zip">
-          <button type="button" className="btn btn--paper" onClick={onZip} disabled={!ready || busy === 'zip'}>
-            <Download size={22} /> Descargar todo (.zip)
-          </button>
-          <span>Recuerda: es una broma. No la presentes en ningún trámite.</span>
+      <section className="result__pdf" aria-labelledby="h-pdf">
+        <div className="result__grid">
+          <motion.div className="preview" initial={{ y: 0 }} whileInView={{ y: [0, 0, 3, 0] }} viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.35, delay: 0.6, times: [0, 0.01, 0.4, 1] }}>
+            <div className="preview__box">
+              <Scaled w={816} h={528}>
+                <Certificate name={name} />
+              </Scaled>
+            </div>
+            <motion.div
+              className="stamp"
+              aria-hidden="true"
+              initial={{ opacity: 0, scale: 2.6, rotate: -14 }}
+              whileInView={{ opacity: 0.82, scale: 1, rotate: -8 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ delay: 0.3, type: 'spring', stiffness: 520, damping: 18, mass: 0.9 }}
+            >
+              <b>ATENDIDO</b>
+              <span>19 NOV 2026</span>
+            </motion.div>
+          </motion.div>
+
+          <div className="receipt">
+            <h2 id="h-pdf" className="display">Tu nota en PDF</h2>
+            <dl>
+              <dt>Paciente</dt>
+              <dd>
+                <b>{name}</b>
+              </dd>
+              <dt>Desde</dt>
+              <dd>19 de noviembre de 2026</dd>
+              <dt>Observación</dt>
+              <dd>Cero validez, pero tu dale</dd>
+              <dt>Turno</dt>
+              <dd className="led-ink">№ {turno}</dd>
+              <dt>Firma</dt>
+              <dd>Mayer Mizrachi Matalon (no firma)</dd>
+              <dt style={{ borderBottom: '1px solid #e0e0e0' }}>Validez</dt>
+              <dd style={{ borderBottom: '1px solid #e0e0e0' }}>Ninguna</dd>
+            </dl>
+            <div className="receipt__row" style={{ marginTop: 20 }}>
+              <button type="button" className="btn btn--line" onClick={onPdf} disabled={!ready}>
+                <Download /> Descargar PDF
+              </button>
+              <button type="button" className="btn btn--line" onClick={onPrint} disabled={!ready}>
+                <Printer /> Imprimir
+              </button>
+            </div>
+            <p className="receipt__fine">
+              Media carta (8.5 × 5.5 in), una página.{' '}
+              <button type="button" onClick={onBack}>
+                Corregir nombre
+              </button>
+            </p>
+          </div>
         </div>
       </section>
+
+      <AnimatePresence>
+        {bar && (
+          <motion.div className="sharebar" initial={{ y: 90 }} animate={{ y: 0 }} exit={{ y: 90 }} transition={{ duration: 0.35, ease }}>
+            <button type="button" className="btn btn--paper" onClick={() => shareStory(sel)} disabled={!ready || busy === 'share'}>
+              {shareLabel} {canShareFiles() ? <Share size={24} /> : <Download size={22} />}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="result__zip">
+        <button type="button" className="btn btn--paper" onClick={onZip} disabled={!ready || busy === 'zip'}>
+          <Download size={22} /> Descargar todo (.zip)
+        </button>
+        <span>Historias, posts y PDF. Recuerda: es una broma, no la presentes en ningún trámite.</span>
+      </div>
       <iframe ref={printFrame} title="Imprimir certificado" style={{ position: 'absolute', width: 0, height: 0, border: 0, visibility: 'hidden' }} />
     </main>
       )}

@@ -42,8 +42,8 @@ function Intake({ name, setName, onSubmit, error, turno, variant }) {
         <>
           <h2 className="display">Hoja de admisión</h2>
           <p className="intake__lead">
-            Escribe tu nombre y sal con tu Certificado de No Incapacidad, en PDF y en fotos del consultorio listas para
-            compartir. No sirve para faltar a nada; sirve para que todos sepan dónde vas a estar el 19.
+            Escribe tu nombre y sal con tu Certificado de No Incapacidad listo para tus historias de Instagram y WhatsApp.
+            No sirve para faltar a nada; sirve para que todos sepan dónde vas a estar el 19.
           </p>
         </>
       )}
@@ -165,7 +165,7 @@ function Hero(props) {
   return (
     <section aria-labelledby="h-hero-m" className="mhero">
       <h1 id="h-hero-m" className="sr-only">Certificado de No Incapacidad</h1>
-      <p className="mhero__lead">Tu Certificado de No Incapacidad, con tu nombre.</p>
+      <p className="mhero__lead">Tu Certificado de No Incapacidad, listo para tus historias.</p>
       <div className="mhero__photo">
         <Scaled w={1080} h={1350}>
           <img src="/img/cenital-base.jpg" width="1080" height="1350" alt="Escritorio del consultorio de noche, visto desde arriba, con la nota y tu nombre" style={{ position: 'absolute', inset: 0, width: 1080, height: 1350 }} fetchpriority="high" />
@@ -182,7 +182,7 @@ function Hero(props) {
 function Meta() {
   const rows = [
     ['Documento', 'Certificado de No Incapacidad'],
-    ['Observación', 'Hasta pronta mejoría'],
+    ['Observación', 'Cero validez, pero tu dale'],
     ['Desde', '19.11.2026'],
     ['Validez', 'Ninguna']
   ];
@@ -216,7 +216,7 @@ function Ticker() {
     <div className="ticker" aria-hidden="true">
       <div className="ticker__row ticker__row--light">
         <ScrollVelocity
-          texts={[<TickerRow key="a" items={['Certificado de No Incapacidad', 'Disque consultorios', 'Hasta pronta mejoría', 'Hasta nuevo aviso']} />]}
+          texts={[<TickerRow key="a" items={['Certificado de No Incapacidad', 'Disque consultorios', 'Cero validez, pero tu dale', 'Hasta nuevo aviso']} />]}
           velocity={60}
           numCopies={4}
           parallaxClassName="parallax"
@@ -239,7 +239,7 @@ function Ticker() {
 const DIRECTORY = [
   { title: 'Admisión', desc: 'Escribes tu nombre en la hoja de admisión.', floor: 'Planta baja', icon: <Arrow size={28} /> },
   { title: 'Consultorio', desc: 'La nota se llena sola con tu nombre. No duele.', floor: 'Piso 1', icon: <ArrowUp size={28} /> },
-  { title: 'Alta', desc: 'Descargas el PDF y las fotos del consultorio para tus historias.', floor: 'Piso 2', icon: <ArrowOut size={26} />, line: true }
+  { title: 'Alta', desc: 'Subes tu historia a Instagram o WhatsApp. Si quieres, también el post y el PDF.', floor: 'Piso 2', icon: <ArrowOut size={26} />, line: true }
 ];
 
 function How() {
@@ -293,9 +293,9 @@ function Photos() {
     <section id="fotos" className="section photos" aria-labelledby="h-fotos">
       <div className="wrap">
         <div className="photos__head">
-          <BlurText tag="h2" className="display h2" text="Tu nota, desde todos los ángulos." animateBy="words" direction="bottom" delay={80} />
+          <BlurText tag="h2" className="display h2" text="Tu historia, desde todos los ángulos." animateBy="words" direction="bottom" delay={80} />
           <p className="lead">
-            Cuatro fotos del consultorio con tu nombre ya puesto, en formato post (4:5) e historia (9:16). Listas para Instagram y WhatsApp.
+            Cuatro historias (9:16) del consultorio con tu nombre ya puesto, listas para Instagram y WhatsApp. También salen en post 4:5 y en PDF.
           </p>
         </div>
         <div className="photo-grid">
@@ -310,13 +310,13 @@ function Photos() {
             >
               {hover ? (
                 <TiltedCard
-                  imageSrc={`/img/ejemplo-${p.id}.jpg`}
-                  altText={`La nota en la foto ${p.label}`}
+                  imageSrc={`/img/historia-${p.id}.jpg`}
+                  altText={`Historia de ejemplo: ${p.label}`}
                   containerWidth="100%"
                   containerHeight="auto"
                   imageWidth="100%"
                   imageHeight="100%"
-                  style={{ aspectRatio: '4 / 5' }}
+                  style={{ aspectRatio: '9 / 16' }}
                   radius={0}
                   rotateAmplitude={10}
                   scaleOnHover={1.03}
@@ -329,7 +329,7 @@ function Photos() {
                   shadow={0.6}
                 />
               ) : (
-                <img className="photo-plain" src={`/img/ejemplo-${p.id}.jpg`} alt={`La nota en la foto ${p.label}`} loading="lazy" width="1080" height="1350" />
+                <img className="photo-plain" src={`/img/historia-${p.id}.jpg`} alt={`Historia de ejemplo: ${p.label}`} loading="lazy" width="720" height="1280" />
               )}
               <figcaption className="photo-cap">
                 <b>{p.label}</b>

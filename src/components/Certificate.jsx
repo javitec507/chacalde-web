@@ -18,7 +18,6 @@ export default function Certificate({ name = '', placeholder = 'Tu nombre aquí'
         <br />
         CHACALDE
       </div>
-      <img className="cert__icon" src="/img/icon.png" alt="" />
       <div className="cert__title">CERTIFICADO DE NO INCAPACIDAD</div>
       <div className="cert__rule" />
 
@@ -51,12 +50,13 @@ export default function Certificate({ name = '', placeholder = 'Tu nombre aquí'
       </div>
       <div className="cert__ln" style={{ left: 168, top: 318, width: 525 }} />
 
-      <img className="cert__seal" src="/img/sello.svg" alt="" />
+      <img className="cert__seal" src="/img/sello-disque.svg" alt="" />
       <div className="cert__t" style={{ left: 193, top: 347 }}>
-        <b>Observación:</b> Hasta pronta mejoría.
+        <b>Observación:</b> Este documento tiene cero validez, pero tu dale!
       </div>
-      <img className="cert__sign" src="/img/firma.svg" alt="" />
-      <div className="cert__ln" style={{ left: 508, top: 461, width: 247 }} />
+      <img className="cert__sign" src="/img/firma-mayer.svg" alt="" />
+      <div className="cert__ln" style={{ left: 468, top: 460, width: 300 }} />
+      <div className="cert__signer">MAYER MIZRACHI MATALON</div>
       <div className="cert__nofirma">NO FIRMA</div>
     </div>
   );
