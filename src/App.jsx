@@ -6,6 +6,7 @@ import Loader, { useBoot } from './components/Loader.jsx';
 const loadResult = () => import('./components/Result.jsx');
 const Result = lazy(loadResult);
 import { randomTurno } from './components/ui.jsx';
+import { track } from './lib/track.js';
 
 export default function App() {
   const [name, setName] = useState('');
@@ -13,6 +14,11 @@ export default function App() {
   const [submitted, setSubmitted] = useState('');
   const [turno, setTurno] = useState(randomTurno);
   const boot = useBoot();
+
+  // One anonymous visit per page load (the server dedupes repeats).
+  useEffect(() => {
+    track('visit');
+  }, []);
 
   // Once the site is open, fetch the result page in the background.
   useEffect(() => {
@@ -27,6 +33,7 @@ export default function App() {
   }, [submitted]);
 
   const submit = useCallback((n) => {
+    track('cert');
     setSubmitted(n);
     setView('alta');
     window.history.pushState({}, '', '#alta');
