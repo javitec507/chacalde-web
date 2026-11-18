@@ -7,6 +7,7 @@ import Certificate from './Certificate.jsx';
 import { Download, Printer, Share, Scaled } from './ui.jsx';
 import { download, generateAll, makeZip, shareFiles, PHOTOS } from '../lib/generate.js';
 import { firstName } from '../lib/name.js';
+import { track } from '../lib/track.js';
 
 const ease = [0.16, 1, 0.3, 1];
 
@@ -73,9 +74,14 @@ export default function Result({ name, turno, onBack }) {
   }, [ready, error]);
   const base = result?.base || 'chacalde';
 
-  const onPdf = () => ready && download(result.pdf, `${base}-certificado.pdf`);
+  const onPdf = () => {
+    if (!ready) return;
+    track('pdf');
+    download(result.pdf, `${base}-certificado.pdf`);
+  };
   const onPrint = () => {
     if (!ready) return;
+    track('print');
     const f = printFrame.current;
     f.onload = () => {
       try {
@@ -94,7 +100,11 @@ export default function Result({ name, turno, onBack }) {
     try {
       setBusy('share');
       const ok = await shareFiles(filesFor(fmt), 'Hasta nuevo aviso. Saca el tuyo en chacalde.com');
-      if (!ok) download(await makeZip(result), `${base}.zip`);
+      if (ok) track('share');
+      else {
+        track('zip');
+        download(await makeZip(result), `${base}.zip`);
+      }
     } catch (e) {
       if (e?.name !== 'AbortError') console.error(e);
     } finally {
@@ -104,6 +114,7 @@ export default function Result({ name, turno, onBack }) {
   const onZip = async () => {
     if (!ready) return;
     setBusy('zip');
+    track('zip');
     try {
       download(await makeZip(result), `${base}.zip`);
     } finally {
@@ -244,7 +255,10 @@ export default function Result({ name, turno, onBack }) {
                     type="button"
                     className="dl"
                     aria-label={`Descargar ${p.label}`}
-                    onClick={() => download(story ? it.story : it.post, `${base}-${story ? 'historia' : 'post'}-${i + 1}-${p.id}.jpg`)}
+                    onClick={() => {
+                      track('photo');
+                      download(story ? it.story : it.post, `${base}-${story ? 'historia' : 'post'}-${i + 1}-${p.id}.jpg`);
+                    }}
                   >
                     <Download />
                   </button>

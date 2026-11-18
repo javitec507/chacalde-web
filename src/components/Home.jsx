@@ -370,6 +370,7 @@ function Notice() {
               <li>No lo presentes en tu trabajo, escuela, universidad ni ante ninguna autoridad.</li>
               <li>No lleva firma: dice “NO FIRMA” por algo.</li>
               <li>Tu nombre solo se usa para armar la nota en tu navegador. No lo guardamos.</li>
+              <li>Solo contamos, de forma anónima y sin cookies, cuántas notas se sacan y se descargan.</li>
             </ul>
           </div>
         </motion.div>
