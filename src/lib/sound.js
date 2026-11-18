@@ -1,6 +1,7 @@
 // Sounds for the waiting room: pen and stamp, photo click, and the counter calling your number.
 // Browsers only allow sound after a tap or key press, so nothing plays until then. The voice reads
 // the turn number digit by digit; it never says the name. The only thing kept is the mute choice.
+// On iPhone it plays like a video (also with the silent switch on); the header button mutes it.
 import sfxUrl from '../assets/sfx/sfx.mp3?url';
 import vozUrl from '../assets/sfx/voz.mp3?url';
 
@@ -62,6 +63,12 @@ export function unlock() {
   if (typeof window === 'undefined' || muted) return;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
+  // iPhone: web sounds follow the silent switch unless the page asks for "playback" (iOS 17+).
+  try {
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
+  } catch {
+    /* not supported */
+  }
   if (!ctx) {
     try {
       ctx = new AC({ latencyHint: 'interactive' });
@@ -71,25 +78,31 @@ export function unlock() {
     out = ctx.createGain();
     out.gain.value = 1;
     out.connect(ctx.destination);
-    // iOS: a silent blip inside the tap fully wakes the audio.
+  }
+  if (ctx.state !== 'running') {
+    // Older iPhones: a silent blip inside the tap fully wakes the audio.
     const s = ctx.createBufferSource();
     s.buffer = ctx.createBuffer(1, 1, 22050);
     s.connect(out);
     s.start(0);
+    ctx.resume().catch(() => {});
   }
-  if (ctx.state !== 'running') ctx.resume().catch(() => {});
   load('sfx', sfxUrl);
   load('voz', vozUrl);
 }
 
+// Stay listening: iPhone pauses the audio when you leave for Instagram or WhatsApp to share,
+// and the next tap (or coming back) wakes it again.
 const GESTURES = ['pointerdown', 'touchend', 'keydown', 'click'];
 function onGesture() {
-  unlock();
-  if (ctx && ctx.state === 'running') GESTURES.forEach((e) => window.removeEventListener(e, onGesture, true));
+  if (!ctx || ctx.state !== 'running' || !sheets.sfx || !sheets.voz) unlock();
 }
 if (typeof window !== 'undefined') {
   GESTURES.forEach((e) => window.addEventListener(e, onGesture, { capture: true, passive: true }));
-  document.addEventListener('visibilitychange', () => document.hidden && stopAll());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopAll();
+    else if (ctx && !muted && ctx.state !== 'running') ctx.resume().catch(() => {});
+  });
 }
 
 const canPlay = () => Boolean(ctx && out && ctx.state === 'running' && !muted && !document.hidden);
@@ -173,7 +186,10 @@ export function setMuted(next) {
   } catch {
     /* private mode: the choice lasts for this visit */
   }
-  if (muted) stopAll();
-  else unlock();
+  if (muted) {
+    stopAll();
+    // Let go of the audio so the phone's own music can play again.
+    if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {});
+  } else unlock();
   subs.forEach((fn) => fn());
 }
