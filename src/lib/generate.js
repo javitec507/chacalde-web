@@ -71,7 +71,7 @@ function nameLayer(name) {
 }
 
 async function scenePhoto(scene, name, layer) {
-  const base = await loadImage(`/scenes/${scene.id}.jpg`);
+  const base = await loadImage(`/scenes/${scene.id}-v3.jpg`);
   const W = SCENES.width;
   const Hh = SCENES.height;
   const out = canvas(W, Hh);
@@ -261,7 +261,7 @@ async function storyFrom(photo, name, turno) {
 
 export async function makePdf(name) {
   const [tpl, fontBytes] = await Promise.all([
-    fetch('/template.pdf').then((r) => r.arrayBuffer()),
+    fetch('/certificado-v3.pdf').then((r) => r.arrayBuffer()),
     fetch('/fonts/atkinson-700.ttf').then((r) => r.arrayBuffer())
   ]);
   const pdf = await PDFDocument.load(tpl);
@@ -335,7 +335,7 @@ export function download(blob, filename) {
 
 export async function shareFiles(files, text) {
   if (navigator.canShare && navigator.canShare({ files })) {
-    await navigator.share({ files, text });
+    await navigator.share(text ? { files, text } : { files });
     return true;
   }
   return false;
