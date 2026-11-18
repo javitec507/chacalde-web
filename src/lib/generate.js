@@ -71,7 +71,7 @@ function nameLayer(name) {
 }
 
 async function scenePhoto(scene, name, layer) {
-  const base = await loadImage(`/scenes/${scene.id}-v3.jpg`);
+  const base = await loadImage(`/scenes/${scene.id}-v4.jpg`);
   const W = SCENES.width;
   const Hh = SCENES.height;
   const out = canvas(W, Hh);
