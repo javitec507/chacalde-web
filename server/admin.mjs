@@ -1,4 +1,5 @@
-// Server-rendered admin pages. No JavaScript: the panel works under a CSP with script-src 'none'.
+// Server-rendered admin pages, under a secret path (ADMIN_PATH). No JavaScript, except the promo-image
+// page, which loads one same-origin script to draw the picture.
 import { EVENTS } from './metrics.mjs';
 
 const esc = (s) =>
@@ -32,7 +33,23 @@ a{color:inherit}
 .brand{display:flex;align-items:center;gap:14px;text-decoration:none}
 .brand img{height:28px;width:auto;display:block}
 .brand span{color:var(--muted);border-left:1px solid var(--line-2);padding-left:14px;font-size:14px}
-.top nav{margin-left:auto;display:flex;gap:10px;align-items:center}
+.top nav{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;padding:10px 0}
+.who{color:var(--dim);font-size:13px;margin-right:4px}
+.btn.btn--on{background:#fff;color:var(--ink);border-color:#fff}
+.ok{margin:24px 0 0;padding:14px 16px;border:1px solid #3a7d44;color:#c8f0cf;background:#0d1a10;border-radius:2px}
+.secret{display:inline-block;margin-top:10px;padding:12px 16px;background:#fff;color:var(--ink);font:700 28px Atkinson,ui-monospace,monospace;letter-spacing:.08em;user-select:all;border-radius:2px}
+.field{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:12px}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.field input{height:40px;min-width:220px;border:1px solid var(--line-2);background:var(--ink);color:#fff;padding:0 12px;font:400 15px Atkinson,system-ui,sans-serif;border-radius:2px}
+.inline{display:inline;margin:0}
+.btn--danger:hover{background:#ff6b6b;border-color:#ff6b6b;color:var(--ink)}
+.share{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:32px;align-items:start;margin:32px 0 48px}
+.share canvas{width:100%;height:auto;display:block;border:1px solid var(--line-2);background:#000;border-radius:2px}
+.share .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.share .actions .btn{height:48px;font-size:16px;padding:0 20px}
+.share .actions .btn[disabled]{opacity:.5;cursor:wait}
+.share ul{margin:14px 0 0;padding-left:20px;color:var(--muted)}
+.share li{margin:6px 0}
 .top form{margin:0}
 .btn{display:inline-flex;align-items:center;height:38px;padding:0 14px;border:1px solid var(--line-2);background:var(--ink-2);color:#fff;font:700 14px Atkinson,system-ui,sans-serif;text-decoration:none;border-radius:2px;cursor:pointer}
 .btn:hover{background:#fff;color:var(--ink)}
@@ -68,18 +85,32 @@ td.zero{color:var(--dim)}
 tr.today td{background:#1c1c1c}
 tfoot td{font-weight:700;border-top:1px solid var(--line-2);border-bottom:0}
 .foot{margin:28px 0 48px;color:var(--dim);font-size:13px}
-@media (max-width:640px){.in{padding:0 16px}.brand span{display:none}.hero{padding-top:28px}.hero .side{gap:18px}.tile .v{font-size:26px}.card{padding:16px}}
+@media (max-width:760px){.share{grid-template-columns:1fr;margin-top:20px}.share>div{order:-1}.share canvas{max-width:360px}}
+@media (max-width:640px){.in{padding:0 16px}.brand span,.who{display:none}.top .in{flex-wrap:wrap}.top nav{margin-left:0;justify-content:flex-start;padding-top:0}.hero{padding-top:28px}.hero .side{gap:18px}.tile .v{font-size:26px}.card{padding:16px}}
 `;
 
-function page({ title, body, refresh = false }) {
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">${
+function page({ title, body, refresh = false, script = '' }) {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin">${
     refresh ? '<meta http-equiv="refresh" content="60">' : ''
-  }<title>${esc(title)}</title><link rel="icon" type="image/png" href="/favicon.png"><style>${STYLE}</style></head><body>${body}</body></html>`;
+  }<title>${esc(title)}</title><link rel="icon" type="image/png" href="/favicon.png"><style>${STYLE}</style></head><body>${body}${
+    script ? `<script src="${esc(script)}"></script>` : ''
+  }</body></html>`;
 }
 
-const brand = `<a class="brand" href="/admin"><img src="/img/logo-white.png" alt="Chacalde" width="800" height="286"><span>Panel de métricas</span></a>`;
+const brand = (base) =>
+  `<a class="brand" href="${base}"><img src="/img/logo-white.png" alt="Chacalde" width="800" height="286"><span>Panel de métricas</span></a>`;
 
-export function renderLogin({ error = '' } = {}) {
+// Top bar: who is in, and what they can open (only the owner manages users).
+function topbar(base, me, current) {
+  const link = (href, label, key) => `<a class="btn${current === key ? ' btn--on' : ''}" href="${href}"${current === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  return `<header class="top"><div class="in">${brand(base)}<nav aria-label="Panel"><span class="who">${esc(me.user)}${me.owner ? ' · dueño' : ''}</span>${link(base, 'Métricas', 'dash')}${link(
+    `${base}/compartir`,
+    'Imagen para compartir',
+    'share'
+  )}${me.owner ? link(`${base}/usuarios`, 'Usuarios', 'users') : ''}<a class="btn" href="${base}/export.csv">CSV</a><form method="post" action="${base}/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>`;
+}
+
+export function renderLogin({ base, error = '', user = '' }) {
   const css = `
 .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
 .box{width:100%;max-width:420px;background:#fff;color:var(--ink);padding:32px 30px 26px;border-radius:2px}
@@ -93,12 +124,14 @@ button{margin-top:16px;width:100%;height:54px;border:0;background:var(--ink);col
 .err{margin-top:14px;color:#b00020;font-weight:700}`;
   return page({
     title: 'Entrar · Panel Chacalde',
-    body: `<style>${css}</style><main class="wrap"><form class="box" method="post" action="/admin/login">
+    body: `<style>${css}</style><main class="wrap"><form class="box" method="post" action="${base}/login">
 <img src="/img/logo-white.png" alt="Chacalde" width="800" height="286">
 <h1 class="display">Panel de métricas</h1>
 <p>Acceso solo para administración.</p>
+<label for="user">Usuario</label>
+<input id="user" name="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required ${user ? '' : 'autofocus '}maxlength="24" value="${esc(user)}">
 <label for="pw">Contraseña</label>
-<input id="pw" name="password" type="password" autocomplete="current-password" required autofocus maxlength="200">
+<input id="pw" name="password" type="password" autocomplete="current-password" required ${user ? 'autofocus ' : ''}maxlength="200">
 ${error ? `<p class="err" role="alert">${esc(error)}</p>` : ''}
 <button type="submit">Entrar</button>
 </form></main>`
@@ -163,7 +196,7 @@ function columns({ values, labels, titles, every = 1, W = 1000, H = 260 }) {
   return `${s}</svg>`;
 }
 
-export function renderDashboard({ summary, range, today, warning }) {
+export function renderDashboard({ base, me, summary, range, today, warning }) {
   const { days, total, hoursToday, since } = summary;
   const sum = (e) => days.reduce((a, d) => a + d[e], 0);
   const r = Object.fromEntries(EVENTS.map((e) => [e, sum(e)]));
@@ -199,12 +232,12 @@ export function renderDashboard({ summary, range, today, warning }) {
     .join('');
 
   const tabs = Object.entries(RANGES)
-    .map(([k, label]) => `<a href="/admin?d=${k}"${Number(k) === range ? ' aria-current="page"' : ''}>${label}</a>`)
+    .map(([k, label]) => `<a href="${base}?d=${k}"${Number(k) === range ? ' aria-current="page"' : ''}>${label}</a>`)
     .join('');
 
   const tile = (t, v, s = '') => `<div class="tile"><p class="t">${t}</p><div class="v">${v}</div>${s ? `<p class="s">${s}</p>` : ''}</div>`;
 
-  const body = `<header class="top"><div class="in">${brand}<nav><a class="btn" href="/admin/export.csv">Descargar CSV</a><form method="post" action="/admin/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>
+  const body = `${topbar(base, me, 'dash')}
 <main class="in">
 ${warning ? `<p class="warn" role="alert">${esc(warning)}</p>` : ''}
 <section class="hero" aria-label="Resumen">
@@ -238,4 +271,72 @@ export function toCsv(metrics) {
   const head = ['dia', 'visitas', 'certificados', 'pdf', 'impresiones', 'fotos', 'zip', 'compartidos'];
   const lines = rows.map((d) => [d.day, d.visit, d.cert, d.pdf, d.print, d.photo, d.zip, d.share].join(','));
   return `${head.join(',')}\n${lines.join('\n')}\n`;
+}
+
+// ---------- users (owner only) ----------
+export function renderUsers({ base, me, users, owner, notice = '', error = '', reveal = null }) {
+  const when = (iso) => (iso ? esc(dLong.format(new Date(iso))) : '—');
+  const rows = users.length
+    ? users
+        .map(
+          (u) => `<tr><td><b>${esc(u.name)}</b></td><td>${when(u.created)}</td><td>${when(u.reset)}</td><td style="text-align:right">
+<form class="inline" method="post" action="${base}/usuarios"><input type="hidden" name="action" value="reset"><input type="hidden" name="name" value="${esc(u.name)}"><button class="btn" type="submit">Nueva contraseña</button></form>
+<form class="inline" method="post" action="${base}/usuarios"><input type="hidden" name="action" value="remove"><input type="hidden" name="name" value="${esc(u.name)}"><button class="btn btn--danger" type="submit">Quitar acceso</button></form></td></tr>`
+        )
+        .join('')
+    : '<tr><td colspan="4" class="zero">Todavía no hay usuarios. Crea el primero arriba.</td></tr>';
+  const body = `${topbar(base, me, 'users')}
+<main class="in">
+${error ? `<p class="warn" role="alert">${esc(error)}</p>` : ''}
+${notice ? `<p class="ok" role="status">${esc(notice)}</p>` : ''}
+${
+  reveal
+    ? `<section class="card" aria-label="Contraseña nueva"><h2 class="display">Contraseña de ${esc(reveal.name)}</h2>
+<p class="note">Cópiala ahora y mándasela por un canal privado. No se vuelve a mostrar: si se pierde, genera otra.</p>
+<p class="lbl" style="margin-top:14px">Usuario</p><div class="secret" style="font-size:22px">${esc(reveal.name)}</div>
+<p class="lbl" style="margin-top:16px">Contraseña</p><div class="secret">${esc(reveal.password)}</div></section>`
+    : ''
+}
+<section class="card"><h2 class="display">Crear usuario</h2>
+<p class="note">Ve métricas, descarga el CSV y genera la imagen para compartir. No puede crear ni quitar usuarios. El panel genera la contraseña.</p>
+<form method="post" action="${base}/usuarios"><input type="hidden" name="action" value="create">
+<div class="field"><div><label for="name">Nombre de usuario</label><input id="name" name="name" required maxlength="24" pattern="[a-z0-9][a-z0-9._\\-]{2,23}" placeholder="jefe" autocapitalize="none" spellcheck="false"></div>
+<button class="btn" type="submit" style="height:40px">Crear y generar contraseña</button></div>
+<p class="note" style="margin:10px 0 0">De 3 a 24 caracteres: minúsculas, números, punto, guion o guion bajo.</p></form></section>
+<section class="card"><h2 class="display">Con acceso</h2>
+<p class="note">Tú entras como <b>${esc(owner)}</b> (dueño, contraseña de Coolify). "Nueva contraseña" y "Quitar acceso" cierran al instante sus sesiones abiertas.</p>
+<div class="tablewrap"><table><thead><tr><th>Usuario</th><th>Creado</th><th>Última contraseña nueva</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>
+</main>`;
+  return page({ title: 'Usuarios · Panel Chacalde', body });
+}
+
+// ---------- promo image (9:16) ----------
+const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+
+export function renderShare({ base, me, facts }) {
+  const { total, peakDay, peakHour } = facts;
+  const items = [];
+  if (peakDay) items.push({ v: num(peakDay.n), l: `Récord en un día · ${shortDay(peakDay.day).toUpperCase()}` });
+  if (peakHour) items.push({ v: hourLabel(peakHour.hour), l: 'Hora pico para incapacitarse' });
+  if (total.share) items.push({ v: num(total.share), l: 'Veces compartida en redes' });
+  if (total.print) items.push({ v: num(total.print), l: 'La imprimieron (¿para qué?)' });
+  if (items.length < 4 && total.pdf) items.push({ v: num(total.pdf), l: 'PDF descargados' });
+  if (items.length < 4 && total.visit) items.push({ v: num(total.visit), l: 'Visitas al consultorio' });
+  const data = {
+    total: num(total.cert),
+    asOf: dLong.format(asDate(facts.asOf)).replace('.', '').toUpperCase(),
+    facts: items.slice(0, 4)
+  };
+  const list = data.facts.map((f) => `<li><b>${esc(f.v)}</b> · ${esc(f.l)}</li>`).join('');
+  const body = `${topbar(base, me, 'share')}
+<main class="in"><div class="share">
+<canvas id="story" width="1080" height="1920" role="img" aria-label="Imagen 9:16 con el total de certificados y datos curiosos" data-stats="${esc(JSON.stringify(data))}" data-file="chacalde-${esc(facts.asOf)}.jpg"></canvas>
+<div><h1 class="display" style="font-size:44px">Imagen para compartir</h1>
+<p style="color:var(--muted);max-width:52ch;margin:12px 0 0">Formato historia (9:16), con los números de hoy. Desde el teléfono, "Compartir" abre Instagram o WhatsApp directo; desde la compu se descarga.</p>
+<div class="actions"><button class="btn btn--on" id="share" type="button" disabled>Preparando…</button><button class="btn" id="download" type="button" disabled>Descargar</button></div>
+<p class="lbl" style="margin-top:28px">Lo que dice</p>
+<ul><li><b>${esc(data.total)}</b> · disque pacientes atendidos (total desde el inicio)</li>${list}</ul>
+<p class="since">Al ${esc(dLong.format(asDate(facts.asOf)))}. Solo números anónimos: nunca nombres.</p></div>
+</div></main>`;
+  return page({ title: 'Imagen para compartir · Panel Chacalde', body, script: `${base}/compartir.js` });
 }

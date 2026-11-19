@@ -101,6 +101,29 @@ export class Metrics {
     return { days: days.map((d) => ({ day: d, ...byDay.get(d) })), total, hoursToday, since: this.data.since };
   }
 
+  // All-time totals and fun facts for the promo image: record day, peak hour of the day.
+  facts() {
+    const total = empty();
+    const byDay = new Map();
+    const byHour = Array(24).fill(0);
+    for (const [k, counts] of Object.entries(this.data.hours)) {
+      for (const e of EVENTS) total[e] += counts[e] || 0;
+      const n = counts.cert || 0;
+      if (!n) continue;
+      const day = k.slice(0, 10);
+      byDay.set(day, (byDay.get(day) || 0) + n);
+      byHour[Number(k.slice(11, 13))] += n;
+    }
+    let peakDay = null;
+    for (const [day, n] of byDay) if (!peakDay || n > peakDay.n) peakDay = { day, n };
+    let peakHour = null;
+    byHour.forEach((n, hour) => {
+      if (n && (!peakHour || n > peakHour.n)) peakHour = { hour, n };
+    });
+    const today = dayKey();
+    return { total, peakDay, peakHour, today: byDay.get(today) || 0, asOf: today, since: this.data.since };
+  }
+
   // Every day with data, oldest first (for the CSV).
   allDays() {
     const keys = Object.keys(this.data.hours).map((k) => k.slice(0, 10));

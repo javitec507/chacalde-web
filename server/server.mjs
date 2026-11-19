@@ -1,4 +1,4 @@
-// chacalde.com — static site + anonymous counters + /admin panel. No dependencies.
+// chacalde.com — static site + anonymous counters + metrics panel on a secret path. No dependencies.
 import http from 'node:http';
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, extname, relative, sep } from 'node:path';
@@ -6,13 +6,20 @@ import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, gzipSync, constants as zc } from 'node:zlib';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Metrics, EVENTS, dayKey, lastDays } from './metrics.mjs';
-import { renderDashboard, renderDisabled, renderLogin, toCsv, RANGES } from './admin.mjs';
+import { renderDashboard, renderDisabled, renderLogin, renderShare, renderUsers, toCsv, RANGES } from './admin.mjs';
+import { Users, NAME_RE, MAX_USERS } from './users.mjs';
 
 const PORT = Number(process.env.PORT || 80);
 const DIST = process.env.DIST_DIR || fileURLToPath(new URL('../dist', import.meta.url));
 const DATA = process.env.DATA_DIR || '/data';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const ADMIN_ENABLED = ADMIN_PASSWORD.length >= 12;
+// The panel lives only at ADMIN_PATH (e.g. /sala-x7k2...), never at a guessable address like /admin.
+// Without a valid ADMIN_PATH there is no panel at all: every other path is the public site.
+const ADMIN_PATH = String(process.env.ADMIN_PATH || '').trim().replace(/\/+$/, '').toLowerCase();
+const PATH_OK = /^\/[a-z0-9][a-z0-9-]{9,62}$/.test(ADMIN_PATH);
+const BASE = PATH_OK ? ADMIN_PATH : null;
+const OWNER = NAME_RE.test(String(process.env.ADMIN_USER || '').trim().toLowerCase()) ? process.env.ADMIN_USER.trim().toLowerCase() : 'admin';
+const ADMIN_ENABLED = PATH_OK && ADMIN_PASSWORD.length >= 12;
 const SESSION_DAYS = 7;
 // In production the admin only answers on HTTPS at this origin (never on Coolify's http test URL).
 const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN || 'https://chacalde.com';
@@ -90,6 +97,14 @@ const ADMIN_HEADERS = {
   'Cache-Control': 'no-store',
   'X-Robots-Tag': 'noindex, nofollow'
 };
+
+// The promo-image page runs one same-origin script (canvas drawing). Nothing else changes.
+const SHARE_HEADERS = {
+  ...ADMIN_HEADERS,
+  'Content-Security-Policy':
+    "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+};
+const SHARE_JS = readFileSync(fileURLToPath(new URL('./compartir.js', import.meta.url)));
 
 function send(res, status, body = '', headers = {}) {
   const buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
@@ -234,8 +249,12 @@ function sessionKey() {
 }
 const SESSION_KEY = ADMIN_ENABLED ? sessionKey() : null;
 const COOKIE = 'chx_admin';
+const users = new Users(join(DATA, 'users.json'));
 
-const sign = (exp) => createHmac('sha256', SESSION_KEY).update(`admin:${exp}`).digest('base64url');
+// Cookie: user~version~expiry~signature. The owner is version 0; other users carry their own version,
+// so a new password or removing them ends their open sessions.
+const sign = (payload) => createHmac('sha256', SESSION_KEY).update(`panel:${payload}`).digest('base64url');
+const cookieFor = (user, ver, exp) => `${user}~${ver}~${exp}~${sign(`${user}~${ver}~${exp}`)}`;
 
 function equal(a, b) {
   const x = Buffer.from(a);
@@ -243,12 +262,16 @@ function equal(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-function isAdmin(req) {
-  if (!ADMIN_ENABLED) return false;
-  const m = String(req.headers.cookie || '').match(/(?:^|;\s*)chx_admin=([0-9]+)\.([A-Za-z0-9_-]+)/);
-  if (!m) return false;
-  const exp = Number(m[1]);
-  return exp > Date.now() && equal(m[2], sign(exp));
+// The signed-in user ({ user, owner }) or null.
+function whoIs(req) {
+  if (!ADMIN_ENABLED) return null;
+  const m = String(req.headers.cookie || '').match(/(?:^|;\s*)chx_admin=([a-z0-9._-]{3,24})~([0-9]{1,9})~([0-9]{1,15})~([A-Za-z0-9_-]{43})(?:;|$)/);
+  if (!m) return null;
+  const [, user, ver, exp, sig] = m;
+  if (Number(exp) <= Date.now() || !equal(sig, sign(`${user}~${ver}~${exp}`))) return null;
+  if (user === OWNER) return ver === '0' ? { user, owner: true } : null;
+  const u = users.get(user);
+  return u && String(u.ver) === ver ? { user, owner: false } : null;
 }
 
 function passwordOk(input) {
@@ -263,58 +286,104 @@ const logins = new Map(); // ip -> { fails, since }
 
 async function handleAdmin(req, res, url, path) {
   const h = ADMIN_HEADERS;
+  const B = BASE;
   if (PROD && (req.headers['x-forwarded-proto'] !== 'https' || `https://${req.headers.host}` !== ADMIN_ORIGIN)) {
-    return send(res, 308, '', { ...h, Location: `${ADMIN_ORIGIN}/admin` });
+    return send(res, 308, '', { ...h, Location: `${ADMIN_ORIGIN}${B}` });
   }
   if (!ADMIN_ENABLED) return send(res, 503, renderDisabled(), { ...h, 'Content-Type': 'text/html; charset=utf-8' });
   const html = (status, body, extra = {}) => send(res, status, body, { ...h, 'Content-Type': 'text/html; charset=utf-8', ...extra });
+  const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=${B}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`;
+  const sub = path.slice(B.length) || '/';
 
-  if (path === '/admin/login') {
-    if (req.method !== 'POST') return send(res, 303, '', { ...h, Location: '/admin' });
+  if (sub === '/login') {
+    if (req.method !== 'POST') return send(res, 303, '', { ...h, Location: B });
     if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
     const ip = clientIp(req);
     const now = Date.now();
     let a = logins.get(ip);
     if (!a || now - a.since > LOGIN_WINDOW) logins.set(ip, (a = { fails: 0, since: now }));
-    if (a.fails >= LOGIN_MAX) return html(429, renderLogin({ error: 'Demasiados intentos. Espera 15 minutos.' }), { 'Retry-After': '900' });
+    if (a.fails >= LOGIN_MAX) return html(429, renderLogin({ base: B, error: 'Demasiados intentos. Espera 15 minutos.' }), { 'Retry-After': '900' });
     const body = await readBody(req, 2048);
-    const pw = body === null ? '' : new URLSearchParams(body).get('password') || '';
-    if (!passwordOk(pw)) {
+    const form = new URLSearchParams(body === null ? '' : body);
+    const user = String(form.get('user') || '').trim().toLowerCase().slice(0, 24);
+    const pw = form.get('password') || '';
+    let ver = null;
+    if (user === OWNER) ver = passwordOk(pw) ? 0 : null;
+    else if (NAME_RE.test(user)) ver = await users.verify(user, pw);
+    if (ver === null) {
       a.fails += 1;
       await new Promise((r) => setTimeout(r, 700));
-      return html(401, renderLogin({ error: 'Contraseña incorrecta.' }));
+      return html(401, renderLogin({ base: B, user, error: 'Usuario o contraseña incorrectos.' }));
     }
     logins.delete(ip);
     const exp = now + SESSION_DAYS * 86_400_000;
-    return send(res, 303, '', {
-      ...h,
-      Location: '/admin',
-      'Set-Cookie': `${COOKIE}=${exp}.${sign(exp)}; Path=/admin; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Strict`
-    });
+    return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie(cookieFor(user, ver, exp), SESSION_DAYS * 86400) });
   }
 
-  if (path === '/admin/logout') {
-    if (req.method !== 'POST' || !sameSite(req)) return send(res, 303, '', { ...h, Location: '/admin' });
-    return send(res, 303, '', { ...h, Location: '/admin', 'Set-Cookie': `${COOKIE}=; Path=/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict` });
+  if (sub === '/logout') {
+    if (req.method !== 'POST' || !sameSite(req)) return send(res, 303, '', { ...h, Location: B });
+    return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie('', 0) });
+  }
+
+  const me = whoIs(req);
+
+  if (sub === '/usuarios' && req.method === 'POST') {
+    if (!me || !me.owner) return send(res, 404, 'Not Found', h);
+    if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
+    const body = await readBody(req, 2048);
+    const form = new URLSearchParams(body === null ? '' : body);
+    const action = form.get('action');
+    const name = String(form.get('name') || '').trim().toLowerCase();
+    const view = (o) => html(200, renderUsers({ base: B, me, owner: OWNER, users: users.list(), ...o }));
+    if (!NAME_RE.test(name)) return view({ error: 'Nombre no válido: de 3 a 24 caracteres, minúsculas, números, punto, guion o guion bajo.' });
+    try {
+      if (action === 'create') {
+        if (name === OWNER) return view({ error: `"${name}" es el usuario del dueño. Elige otro nombre.` });
+        if (users.get(name)) return view({ error: `Ya existe "${name}". Usa "Nueva contraseña" si la necesita.` });
+        if (users.list().length >= MAX_USERS) return view({ error: `Máximo ${MAX_USERS} usuarios.` });
+        const password = await users.setPassword(name, { isNew: true });
+        return view({ notice: `Usuario "${name}" creado.`, reveal: { name, password } });
+      }
+      if (action === 'reset') {
+        if (!users.get(name)) return view({ error: `No existe "${name}".` });
+        const password = await users.setPassword(name, { isNew: false });
+        return view({ notice: `Nueva contraseña para "${name}". Su sesión anterior se cerró.`, reveal: { name, password } });
+      }
+      if (action === 'remove') {
+        return view(users.remove(name) ? { notice: `"${name}" ya no tiene acceso.` } : { error: `No existe "${name}".` });
+      }
+    } catch (e) {
+      console.error(e);
+      return view({ error: 'No se pudo guardar. Revisa el almacenamiento persistente /data en Coolify.' });
+    }
+    return view({ error: 'Acción no válida.' });
   }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method Not Allowed', { ...h, Allow: 'GET, HEAD' });
-  if (!isAdmin(req)) return html(200, renderLogin());
+  if (!me) return sub === '/' ? html(200, renderLogin({ base: B })) : send(res, 303, '', { ...h, Location: B });
 
-  if (path === '/admin/export.csv') {
+  if (sub === '/export.csv') {
     return send(res, 200, toCsv(metrics), {
       ...h,
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="chacalde-metricas-${dayKey()}.csv"`
     });
   }
-  if (path !== '/admin' && path !== '/admin/') return send(res, 404, 'Not Found', h);
+  if (sub === '/compartir') {
+    return send(res, 200, renderShare({ base: B, me, facts: metrics.facts() }), { ...SHARE_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
+  }
+  if (sub === '/compartir.js') return send(res, 200, SHARE_JS, { ...h, 'Content-Type': 'text/javascript; charset=utf-8' });
+  if (sub === '/usuarios') {
+    if (!me.owner) return send(res, 404, 'Not Found', h);
+    return html(200, renderUsers({ base: B, me, owner: OWNER, users: users.list(), error: users.error || '' }));
+  }
+  if (sub !== '/') return send(res, 404, 'Not Found', h);
 
   const d = Number(url.searchParams.get('d'));
   const range = RANGES[d] ? d : 30;
   const summary = metrics.summary(lastDays(range));
   const warning = metrics.saved ? metrics.error : `${metrics.error}. Los datos solo están en memoria y se pierden al reiniciar: revisa el almacenamiento persistente /data en Coolify.`;
-  return html(200, renderDashboard({ summary, range, today: dayKey(), warning }));
+  return html(200, renderDashboard({ base: B, me, summary, range, today: dayKey(), warning }));
 }
 
 // ---------- server ----------
@@ -330,7 +399,7 @@ const server = http.createServer(async (req, res) => {
     if (path.includes('\0') || path.split('/').includes('..')) return send(res, 400, 'Bad Request', PUBLIC_HEADERS);
     if (path === '/healthz') return send(res, 200, 'ok', { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     if (path === '/api/e') return await handleEvent(req, res);
-    if (path === '/admin' || path.startsWith('/admin/')) return await handleAdmin(req, res, url, path);
+    if (BASE && (path === BASE || path.startsWith(`${BASE}/`))) return await handleAdmin(req, res, url, path.replace(/\/+$/, '') || '/');
     return serveStatic(req, res, path);
   } catch (e) {
     console.error(e);
@@ -343,7 +412,10 @@ server.requestTimeout = 30_000;
 server.keepAliveTimeout = 65_000;
 
 server.listen(PORT, () => {
-  console.log(`chacalde-web on :${PORT} · ${files.size} files · data in ${DATA} · admin ${ADMIN_ENABLED ? 'on' : 'off (set ADMIN_PASSWORD, 12+ chars)'}`);
+  const panel = ADMIN_ENABLED
+    ? `panel on (secret path set, owner "${OWNER}", ${users.list().length} extra users)`
+    : `panel off (${PATH_OK ? '' : 'set ADMIN_PATH, e.g. /sala- + 10 random letters; '}${ADMIN_PASSWORD.length >= 12 ? '' : 'set ADMIN_PASSWORD, 12+ chars'})`;
+  console.log(`chacalde-web on :${PORT} · ${files.size} files · data in ${DATA} · ${panel}`);
 });
 
 function shutdown() {
