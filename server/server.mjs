@@ -85,7 +85,8 @@ const ADMIN_HEADERS = {
     "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
+  // same-origin, not no-referrer: with no-referrer the login form is sent with "Origin: null".
+  'Referrer-Policy': 'same-origin',
   'Cache-Control': 'no-store',
   'X-Robots-Tag': 'noindex, nofollow'
 };
@@ -153,9 +154,10 @@ function clientIp(req) {
 // Requests from our own pages only (blocks other sites from posting counts or logins).
 function sameSite(req) {
   const site = req.headers['sec-fetch-site'];
-  if (site && site !== 'same-origin') return false;
+  if (site) return site === 'same-origin';
   const origin = req.headers.origin;
   if (!origin) return true;
+  if (origin === 'null') return false;
   try {
     return new URL(origin).host === req.headers.host;
   } catch {
