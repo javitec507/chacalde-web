@@ -15,9 +15,9 @@ npm run dev
 
 - sirve `dist/` desde memoria (Brotli/gzip, ETag) con cabeceras de seguridad (CSP, HSTS, X-Frame-Options, nosniff…);
 - cuenta de forma anónima visitas, certificados, PDF, impresiones, fotos, ZIP y compartidos (`POST /api/e`), por hora, en `/data/metrics.json`;
-- muestra el panel en `/admin` (contraseña, sin JavaScript) y exporta `/admin/export.csv`.
+- muestra el panel de métricas en una ruta secreta (`ADMIN_PATH`, nunca `/admin`): usuarios con contraseña, CSV e imagen 9:16 para compartir.
 
-En Coolify: *Build pack* = Dockerfile, puerto 80, almacenamiento persistente montado en `/data` y la variable `ADMIN_PASSWORD` (12+ caracteres). Sin esa variable el panel queda deshabilitado; el sitio y el conteo siguen funcionando.
+En Coolify: *Build pack* = Dockerfile, puerto 80, almacenamiento persistente montado en `/data` y las variables `ADMIN_PATH` (ruta secreta del panel: `/` + 10 a 63 minúsculas, números o guiones), `ADMIN_PASSWORD` (12+ caracteres) y, opcional, `ADMIN_USER` (usuario del dueño, por defecto `admin`). Sin ruta o sin contraseña no hay panel; el sitio y el conteo siguen funcionando. Desde el panel, el dueño crea usuarios de solo lectura (contraseña generada, guardada con scrypt en `/data/users.json`).
 
 No se guardan nombres, IP ni cookies de visitantes. Las visitas repetidas de un mismo navegador en 30 minutos cuentan una vez y cada navegador suma como máximo 20 eventos de un mismo tipo cada 10 minutos.
 
