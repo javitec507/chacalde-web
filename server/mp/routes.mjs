@@ -21,9 +21,10 @@ const STATIC = {
   'canje.js': ['build/canje.js', 'text/javascript; charset=utf-8'],
   'canje.css': ['build/canje.css', 'text/css; charset=utf-8'],
   'hero-front.jpg': ['canje-assets/hero-front.jpg', 'image/jpeg'],
-  'hero-back.jpg': ['canje-assets/hero-back.jpg', 'image/jpeg']
+  'hero-back.jpg': ['canje-assets/hero-back.jpg', 'image/jpeg'],
+  'sfx.mp3': ['canje-assets/sfx.mp3', 'audio/mpeg']
 };
-const PUBLIC_ASSETS = new Set(['canje.js', 'canje.css', 'hero-front.jpg', 'hero-back.jpg', 'archivo-display.ttf', 'atkinson-700.ttf', 'atkinson-400.ttf', 'doto-900.ttf']);
+const PUBLIC_ASSETS = new Set(['canje.js', 'canje.css', 'hero-front.jpg', 'hero-back.jpg', 'sfx.mp3', 'archivo-display.ttf', 'atkinson-700.ttf', 'atkinson-400.ttf', 'doto-900.ttf']);
 const IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
 const FILE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 
@@ -83,7 +84,8 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
     if (!cache.has(name)) {
       const [file, type] = STATIC[name];
       const p = join(HERE, file);
-      cache.set(name, existsSync(p) ? { buf: readFileSync(p), type } : null);
+      const buf = existsSync(p) ? readFileSync(p) : null;
+      cache.set(name, buf ? { buf, type, v: createHash('sha1').update(buf).digest('hex').slice(0, 10) } : null);
     }
     return cache.get(name);
   };
@@ -99,9 +101,11 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
   }
 
   function canjeHtml(cfg) {
+    // ?v=<content hash>: a new deploy never mixes old CSS with new JS in someone's cache
+    const v = (name) => (asset(name) ? `?v=${asset(name).v}` : '');
     const data = JSON.stringify(cfg).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex"><meta name="referrer" content="same-origin"><meta name="theme-color" content="#0a0a0a"><title>Canje · Mystery Pack Chacalde</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="${cfg.assets}/canje.css"></head>
-<body><div id="app" data-cfg="${data}"></div><script src="${cfg.assets}/canje.js"></script></body></html>`;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex"><meta name="referrer" content="same-origin"><meta name="theme-color" content="#0a0a0a"><title>Canje · Mystery Pack Chacalde</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="${cfg.assets}/canje.css${v('canje.css')}"></head>
+<body><div id="app" data-cfg="${data}"></div><script src="${cfg.assets}/canje.js${v('canje.js')}"></script></body></html>`;
   }
 
   // Public claim API (also used, as a dry run, by the panel's preview).
