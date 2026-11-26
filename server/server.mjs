@@ -252,7 +252,7 @@ const SESSION_KEY = ADMIN_ENABLED ? sessionKey() : null;
 const COOKIE = 'chx_admin';
 const users = new Users(join(DATA, 'users.json'));
 // Mystery Pack redemption cards: console under the secret path (public claim page comes later, behind the campaign switch).
-const MP = ADMIN_ENABLED ? createMp({ dataDir: DATA, base: BASE, send: (...a) => send(...a), sameSite: (r) => sameSite(r), headers: ADMIN_HEADERS }) : null;
+const MP = ADMIN_ENABLED ? createMp({ dataDir: DATA, base: BASE, send: (...a) => send(...a), sameSite: (r) => sameSite(r), headers: ADMIN_HEADERS, publicHeaders: PUBLIC_HEADERS, clientIp: (r) => clientIp(r) }) : null;
 
 // Cookie: user~version~expiry~signature. The owner is version 0; other users carry their own version,
 // so a new password or removing them ends their open sessions.
@@ -407,6 +407,10 @@ const server = http.createServer(async (req, res) => {
     if (path.includes('\0') || path.split('/').includes('..')) return send(res, 400, 'Bad Request', PUBLIC_HEADERS);
     if (path === '/healthz') return send(res, 200, 'ok', { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     if (path === '/api/e') return await handleEvent(req, res);
+    // Mystery Pack claim page: exists only while the campaign is switched on (or closed, to say so).
+    if (MP && (path === '/canje' || path.startsWith('/canje/') || path.startsWith('/api/canje/'))) {
+      if ((await MP.publicHandle(req, res, path)) !== false) return;
+    }
     if (BASE && (path === BASE || path.startsWith(`${BASE}/`))) return await handleAdmin(req, res, url, path.replace(/\/+$/, '') || '/');
     return serveStatic(req, res, path);
   } catch (e) {
