@@ -38,10 +38,10 @@ function Ticker() {
 
 const rise = (i = 0) => ({ initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.15 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] } });
 
-function Header({ preview }) {
+function Header({ preview, test }) {
   return (
     <>
-      {preview ? <div className="preview">VISTA PREVIA · los canjes no se guardan</div> : null}
+      {preview ? <div className="preview">VISTA PREVIA · los canjes no se guardan</div> : test ? <div className="preview">CÓDIGO DE PRUEBA · no se guarda nada</div> : null}
       <header className="top">
         <div className="in">
           <img src="/img/logo-white.png" alt="Chacalde" />
@@ -287,9 +287,13 @@ function DoneStep({ S }) {
         <h2 className="display h2" style={{ marginTop: 10 }}>
           ¡Es tuyo!
         </h2>
-        <p className="lead">
-          Te escribimos por WhatsApp para coordinar la entrega de <b>{c.name}</b> ({c.variant} · N° {num(c)}). Guarda este número de canje.
-        </p>
+        {S.result.test ? (
+          <p className="lead">Así se ve un canje de verdad. Como fue con el código de prueba, no se registró nada ni se guardaron datos ni fotos.</p>
+        ) : (
+          <p className="lead">
+            Te escribimos por WhatsApp para coordinar la entrega de <b>{c.name}</b> ({c.variant} · N° {num(c)}). Guarda este número de canje.
+          </p>
+        )}
         <div className="share" style={{ marginTop: 26 }}>
           <p className="lbl" style={{ margin: 0 }}>
             Presúmelo
@@ -412,7 +416,7 @@ export default function App({ cfg }) {
 
   return (
     <>
-      <Header preview={cfg.preview} />
+      <Header preview={cfg.preview} test={Boolean(S.card && S.card.test && S.step !== 'code')} />
       <AnimatePresence mode="wait">
         <motion.main key={S.step} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
           {body}

@@ -96,6 +96,19 @@ export async function renderCard(c, assets) {
       /* fall back to the plain card */
     }
   }
+  if (c.test) {
+    // test code with no design uploaded yet: the landing's sample card
+    try {
+      const img = await loadImg(`${assets}/hero-front.jpg`);
+      g.fillStyle = '#fff';
+      g.fillRect(0, 0, W, H);
+      const s = Math.min(W / img.width, H / img.height);
+      g.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s);
+      return cv;
+    } catch {
+      /* plain card */
+    }
+  }
   g.fillStyle = '#0d0d0d';
   g.fillRect(0, 0, W, H);
   g.strokeStyle = c.color;
