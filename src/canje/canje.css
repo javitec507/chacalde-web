@@ -17,6 +17,7 @@ button,input,textarea{font:inherit;color:inherit}
 main{max-width:460px;margin:0 auto;padding:22px 20px calc(36px + env(safe-area-inset-bottom))}
 .screen{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;animation:fadein .3s ease-out both}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.screen>:not(.holo):not(.sample){position:relative;z-index:1}
 .display{font-family:Archivo,'Arial Narrow',sans-serif;font-style:italic;font-weight:900;font-stretch:76%;text-transform:uppercase;letter-spacing:-.01em;line-height:.95;margin:0;font-size:clamp(30px,9vw,40px)}
 .lead{color:#d0d0d0;font-size:16px;margin:0;max-width:36ch}
 .lbl{margin:0;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
