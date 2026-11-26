@@ -67,6 +67,16 @@ export class MysteryPack {
     } catch (e) {
       if (e.code !== 'ENOENT') console.error(`mp: no se pudo leer ${this.file}: ${e.message}`);
     }
+    // The test code: never used up, never saves anything. Works in the console preview; on the public page only if the owner allows it.
+    if (!this.data.test || !this.data.test.enc) {
+      const core = this.newCore();
+      this.data.test = { enc: this.encrypt(core), hash: this.hash(core), public: false, changedAt: now(), changedBy: 'sistema' };
+      try {
+        this.save();
+      } catch {
+        /* read-only data dir: the code changes on restart */
+      }
+    }
   }
 
   secret(name) {
@@ -115,6 +125,7 @@ export class MysteryPack {
 
   newCore() {
     const taken = new Set(Object.values(this.data.cards).map((c) => c.codeHash));
+    if (this.data.test) taken.add(this.data.test.hash);
     for (;;) {
       let r = '';
       for (let i = 0; i < RAND; i += 1) r += ALPHABET[randomInt(ALPHABET.length)];
@@ -127,6 +138,55 @@ export class MysteryPack {
     const v = this.data.variants[card.variantId];
     const core = this.decrypt(card.codeEnc);
     return `${this.data.settings.edition.code}-${v ? v.abbr : 'XX'}-${core.slice(0, 4)}-${core.slice(4)}`;
+  }
+
+  // ---------- test code ----------
+  testCode() {
+    const core = this.decrypt(this.data.test.enc);
+    return `${this.data.settings.edition.code}-PR-${core.slice(0, 4)}-${core.slice(4)}`;
+  }
+
+  isTest(input) {
+    const core = coreOf(input);
+    return Boolean(core) && this.hash(core) === this.data.test.hash;
+  }
+
+  /** What the claim page shows for the test code: a demo prize with the default design's art (if there is one). */
+  testCard() {
+    const s = this.data.settings;
+    const d = this.data.designs[s.defaultDesign] || Object.values(this.data.designs)[0];
+    const front = d && d.sides.front;
+    return {
+      name: 'Premio de prueba',
+      n: 1,
+      total: 1,
+      variant: 'Prueba',
+      abbr: 'PR',
+      color: '#ff3b3b',
+      effect: 'holo',
+      edition: s.edition.name,
+      expires: s.edition.expires,
+      art: front && (front.preview || front.file) ? { file: front.preview || front.file, fields: front.fields.filter((f) => f.key !== 'qr' && f.key !== 'code') } : null,
+      card: s.card,
+      test: true
+    };
+  }
+
+  setTest({ public: pub, rotate }, by) {
+    const t = this.data.test;
+    if (typeof pub === 'boolean' && pub !== t.public) {
+      t.public = pub;
+      this.log(by, pub ? 'Código de prueba: también en la página pública' : 'Código de prueba: solo en la vista previa');
+    }
+    if (rotate) {
+      const core = this.newCore();
+      t.enc = this.encrypt(core);
+      t.hash = this.hash(core);
+      this.log(by, 'Código de prueba cambiado (el anterior ya no sirve)');
+    }
+    t.changedAt = now();
+    t.changedBy = by;
+    this.save();
   }
 
   findByCode(input) {
@@ -347,6 +407,24 @@ export class MysteryPack {
     return Object.values(this.data.designs).some((d) => d.sides.front.preview === file || d.sides.front.file === file);
   }
 
+  /** The test code goes through the same checks as a real claim, and nothing is saved. */
+  testClaim(info, photos) {
+    this.checkClaim(info, photos);
+    return { no: 'PRUEBA', at: now(), preview: true, test: true };
+  }
+
+  checkClaim(info, photos) {
+    const s = this.data.settings;
+    const name = str(info.name, 80);
+    const phone = str(info.phone, 30).replace(/[^0-9+()\s-]/g, '');
+    const email = str(info.email, 120);
+    if (name.length < 3) throw new Error('Escribe tu nombre completo.');
+    if (phone.replace(/\D/g, '').length < 7) throw new Error('Escribe un número de WhatsApp válido.');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Revisa tu correo.');
+    if (!info.consent) throw new Error('Necesitamos tu permiso para usar estos datos solo para entregarte el premio.');
+    if (s.photoCheck && (!photos.front || !photos.back)) throw new Error('Sube la foto del frente y del reverso de tu tarjeta.');
+  }
+
   /** Registers a claim. dry = preview (nothing is saved). */
   claim(card, info, photos, { dry = false } = {}) {
     if (card.status !== 'available') throw Object.assign(new Error('Este código ya fue canjeado.'), { code: 'taken' });
@@ -434,10 +512,11 @@ export class MysteryPack {
   /** Everything the console needs, without codes. */
   view() {
     const { settings, designs, variants, exports, audit } = this.data;
+    const test = { code: this.testCode(), public: this.data.test.public };
     const cards = Object.values(this.data.cards)
       .sort((a, b) => (a.variantId === b.variantId ? a.n - b.n : a.variantId < b.variantId ? -1 : 1))
       .map(({ codeHash, codeEnc, ...c }) => c);
     const claims = Object.values(this.data.claims || {}).sort((a, b) => (a.at < b.at ? 1 : -1));
-    return { settings, designs, variants, cards, claims, exports: exports.slice(0, 30), audit: audit.slice(0, 60), open: this.campaignOpen() };
+    return { settings, designs, variants, cards, claims, test, exports: exports.slice(0, 30), audit: audit.slice(0, 60), open: this.campaignOpen() };
   }
 }

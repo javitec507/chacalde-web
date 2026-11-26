@@ -242,6 +242,7 @@ ${items || '<section class="card"><p class="note">No hay canjes en esta lista.</
     const c = s.card;
     return `<section class="card"><p class="lbl">Estado de la campaña</p><div class="led ${st}">${label}</div><p class="note" style="max-width:70ch;font-size:14px">${esc(explain)}${s.campaign.changedAt ? ` · Último cambio: ${esc(new Date(s.campaign.changedAt).toLocaleString('es-PA'))} por ${esc(s.campaign.changedBy)}` : ''}</p>${buttons}
 <div class="stats"><div><p class="lbl">Variantes</p><b>${variants().length}</b></div><div><p class="lbl">Cartas</p><b>${S.cards.length}</b></div><div><p class="lbl">Con nombre</p><b>${named}</b></div><div><p class="lbl">Canjeadas</p><b>${S.cards.filter((x) => x.status !== 'available' && x.status !== 'void').length}</b></div></div></section>
+${viewTest()}
 <section class="card"><h2 class="display">Edición y medida de la carta</h2><p class="note">Todo se calcula con esto: posiciones, PDFs y revisión. Medida estándar de carta: 63.5 × 88.9 mm (2.5 × 3.5 in).</p>
 <div class="row"><div class="f w1"><label>Código</label><input id="e-code" value="${esc(e.code)}" maxlength="8"></div><div class="f w3"><label>Nombre de la edición</label><input id="e-name" value="${esc(e.name)}" maxlength="60"></div><div class="f w2"><label>Vence</label><input id="e-exp" type="date" value="${esc(e.expires)}"></div></div>
 <div class="row" style="margin-top:12px"><div class="f w1"><label>Ancho (mm)</label><input id="c-w" type="number" step="0.1" value="${c.trimW}"></div><div class="f w1"><label>Alto (mm)</label><input id="c-h" type="number" step="0.1" value="${c.trimH}"></div><div class="f w1"><label>Sangrado</label><input id="c-b" type="number" step="0.5" value="${c.bleed}"></div><div class="f w1"><label>Zona segura</label><input id="c-s" type="number" step="0.5" value="${c.safe}"></div>
@@ -250,6 +251,16 @@ ${items || '<section class="card"><p class="note">No hay canjes en esta lista.</
 <label class="check"><input id="c-m" type="checkbox"${c.marks ? ' checked' : ''}> Marcas de corte</label><label class="check"><input id="c-pc" type="checkbox"${s.photoCheck ? ' checked' : ''}> Pedir foto de la tarjeta al canjear</label>
 <button class="btn primary" data-act="save-settings">Guardar</button></div></section>
 <section class="card"><h2 class="display">Bitácora</h2><div class="tablewrap" style="max-height:340px"><table><tbody>${S.audit.map((a) => `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(new Date(a.at).toLocaleString('es-PA'))}</td><td>${esc(a.by)}</td><td>${esc(a.what)}</td></tr>`).join('') || '<tr><td>Sin movimientos todavía.</td></tr>'}</tbody></table></div></section>`;
+  }
+
+  // The test code: works again and again, shows a demo prize, saves nothing.
+  function viewTest() {
+    const t = S.test || {};
+    if (!t.code) return '';
+    const where = t.public ? 'en la vista previa y, con la campaña encendida, también en chacalde.com/canje' : 'solo en la vista previa de esta consola';
+    return `<section class="card"><h2 class="display">Código de prueba</h2><p class="note" style="max-width:72ch">Sirve todas las veces que quieras: muestra un premio de prueba y recorre todo el canje (formulario, fotos, imagen para compartir), pero no gasta ninguna carta ni guarda datos ni fotos. Funciona ${where}.</p>
+<div class="row" style="align-items:center;margin-top:14px;gap:12px"><span style="font:900 26px/1 Doto,monospace;letter-spacing:.06em;user-select:all">${esc(t.code)}</span><button class="btn" data-act="test-copy">Copiar</button><a class="btn primary" href="${B}/canje#${esc(t.code)}" target="_blank" rel="noopener">Probarlo en la vista previa</a></div>
+${CFG.owner ? `<div class="row" style="margin-top:14px;align-items:center;gap:16px"><label class="check"><input type="checkbox" data-act="test-pub"${t.public ? ' checked' : ''}> También en la página pública (cuando la campaña esté encendida)</label><button class="btn" data-act="test-rotate">Cambiar código</button></div>` : ''}</section>`;
   }
 
   // ---------- variants & cards ----------
@@ -653,6 +664,16 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
         ui.confirm = null;
         return act(() => api('campaign', { state: s }), s === 'on' ? 'Campaña encendida.' : s === 'off' ? 'Campaña apagada.' : 'Campaña cerrada.');
       }
+      case 'test-copy':
+        return navigator.clipboard.writeText(S.test.code).then(
+          () => toast('Código de prueba copiado.'),
+          () => toast('No se pudo copiar: selecciónalo y cópialo a mano.', true)
+        );
+      case 'test-pub':
+        return act(() => api('test', { public: t.checked }), t.checked ? 'El código de prueba también funciona en la página pública.' : 'El código de prueba ahora solo funciona en la vista previa.');
+      case 'test-rotate':
+        if (!window.confirm('¿Cambiar el código de prueba? El actual deja de servir.')) return;
+        return act(() => api('test', { rotate: true }), 'Código de prueba nuevo.');
       case 'save-settings':
         return act(
           () =>

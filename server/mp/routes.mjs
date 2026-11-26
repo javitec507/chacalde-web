@@ -112,6 +112,8 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
     if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
     const st = mp.data.settings;
     if (!preview && st.campaign.state === 'closed') return out(410, { error: 'La campaña ya terminó.' });
+    // The test code: always available, never used up, nothing saved. Public only if the owner allows it.
+    const testOk = (code) => mp.isTest(code) && (preview || mp.data.test.public);
     if (action === 'check') {
       if (!preview && tooMany(req, 'check', 20, 10 * 60_000)) return out(429, { error: 'Demasiados intentos. Espera unos minutos y vuelve a probar.' });
       let b;
@@ -120,6 +122,7 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
       } catch (e) {
         return out(400, { error: e.message });
       }
+      if (testOk(b.code)) return out(200, { card: mp.testCard(), photoCheck: st.photoCheck, delivery: st.delivery, test: true });
       const card = mp.findByCode(b.code);
       if (!card || card.status === 'void') return out(404, { error: 'Ese código no existe. Revisa que esté bien escrito.' });
       if (card.status !== 'available') return out(409, { error: 'Este código ya fue canjeado.', card: mp.publicCard(card) });
@@ -127,12 +130,13 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
     }
     if (action === 'photo') {
       if (!preview && tooMany(req, 'photo', 12, 60 * 60_000)) return out(429, { error: 'Demasiadas fotos. Espera un rato.' });
-      const card = mp.findByCode(req.headers['x-code']);
-      if (!card || card.status !== 'available') return out(400, { error: 'Primero revisa un código válido.' });
+      const test = testOk(req.headers['x-code']);
+      const card = test ? null : mp.findByCode(req.headers['x-code']);
+      if (!test && (!card || card.status !== 'available')) return out(400, { error: 'Primero revisa un código válido.' });
       if (String(req.headers['content-type'] || '').split(';')[0] !== 'image/jpeg') return out(400, { error: 'La foto debe ser JPG.' });
       const buf = await readRaw(req, 4 * 1024 * 1024);
       if (!buf || buf.length < 1000 || buf[0] !== 0xff || buf[1] !== 0xd8) return out(400, { error: 'No pudimos leer esa foto. Prueba con otra.' });
-      if (preview) return out(200, { photo: 'preview.jpg' });
+      if (preview || test) return out(200, { photo: 'preview.jpg' });
       const name = `${randomBytes(12).toString('hex')}.jpg`;
       writeFileSync(join(claimsDir, name), buf, { mode: 0o600 });
       return out(200, { photo: name });
@@ -144,6 +148,13 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
         b = await body(req, 8192);
       } catch (e) {
         return out(400, { error: e.message });
+      }
+      if (testOk(b.code)) {
+        try {
+          return out(200, { ...mp.testClaim(b, { front: b.photos?.front ? 'test' : null, back: b.photos?.back ? 'test' : null }), card: mp.testCard() });
+        } catch (e) {
+          return out(400, { error: e.message });
+        }
       }
       const card = mp.findByCode(b.code);
       if (!card || card.status === 'void') return out(404, { error: 'Ese código no existe.' });
@@ -253,6 +264,12 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
           case 'settings':
             mp.setSettings(await body(req), by);
             break;
+          case 'test': {
+            if (!me.owner) throw new Error('Solo el dueño puede cambiar el código de prueba.');
+            const b = await body(req);
+            mp.setTest({ public: typeof b.public === 'boolean' ? b.public : undefined, rotate: b.rotate === true }, by);
+            break;
+          }
           case 'design': {
             const d = mp.saveDesign(await body(req), by);
             return json(res, 200, { ...mp.view(), saved: d.id });
