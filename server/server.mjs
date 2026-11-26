@@ -8,6 +8,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { Metrics, EVENTS, dayKey, lastDays } from './metrics.mjs';
 import { renderDashboard, renderDisabled, renderLogin, renderShare, renderUsers, toCsv, RANGES } from './admin.mjs';
 import { Users, NAME_RE, MAX_USERS } from './users.mjs';
+import { createMp } from './mp/routes.mjs';
 
 const PORT = Number(process.env.PORT || 80);
 const DIST = process.env.DIST_DIR || fileURLToPath(new URL('../dist', import.meta.url));
@@ -250,6 +251,8 @@ function sessionKey() {
 const SESSION_KEY = ADMIN_ENABLED ? sessionKey() : null;
 const COOKIE = 'chx_admin';
 const users = new Users(join(DATA, 'users.json'));
+// Mystery Pack redemption cards: console under the secret path (public claim page comes later, behind the campaign switch).
+const MP = ADMIN_ENABLED ? createMp({ dataDir: DATA, base: BASE, send: (...a) => send(...a), sameSite: (r) => sameSite(r), headers: ADMIN_HEADERS }) : null;
 
 // Cookie: user~version~expiry~signature. The owner is version 0; other users carry their own version,
 // so a new password or removing them ends their open sessions.
@@ -326,6 +329,11 @@ async function handleAdmin(req, res, url, path) {
   }
 
   const me = whoIs(req);
+
+  if (sub === '/mp' || sub.startsWith('/mp/')) {
+    if (!me) return sub === '/mp' ? send(res, 303, '', { ...h, Location: B }) : send(res, 401, 'Unauthorized', h);
+    return MP.handle(req, res, sub, me);
+  }
 
   if (sub === '/usuarios' && req.method === 'POST') {
     if (!me || !me.owner) return send(res, 404, 'Not Found', h);

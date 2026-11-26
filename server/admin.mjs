@@ -107,7 +107,7 @@ function topbar(base, me, current) {
     `${base}/compartir`,
     'Imagen para compartir',
     'share'
-  )}${me.owner ? link(`${base}/usuarios`, 'Usuarios', 'users') : ''}<a class="btn" href="${base}/export.csv">CSV</a><form method="post" action="${base}/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>`;
+  )}${link(`${base}/mp`, 'Mystery Pack', 'mp')}${me.owner ? link(`${base}/usuarios`, 'Usuarios', 'users') : ''}<a class="btn" href="${base}/export.csv">CSV</a><form method="post" action="${base}/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>`;
 }
 
 export function renderLogin({ base, error = '', user = '' }) {
