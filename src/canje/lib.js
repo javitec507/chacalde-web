@@ -175,12 +175,16 @@ export async function drawShare(cv, { kind, card: c, img, no }) {
   g.drawImage(card, -cw / 2, -ch / 2, cw, ch);
   const fx = c.effect || 'holo';
   if (fx !== 'none') {
+    // foil the way it prints: multiply tints the white areas, black stays black
     const grad = g.createLinearGradient(-cw / 2, -ch / 2, cw / 2, ch / 2);
-    const stops = fx === 'super' || fx === 'oneofone' ? ['rgba(255,244,184,0)', 'rgba(255,210,63,0.45)', 'rgba(176,122,18,0.25)', 'rgba(255,241,166,0)'] : ['rgba(255,79,216,0)', 'rgba(255,79,216,0.35)', 'rgba(79,248,255,0.35)', 'rgba(255,246,79,0)'];
-    stops.forEach((s, i) => grad.addColorStop([0.25, 0.42, 0.56, 0.72][i], s));
-    g.globalCompositeOperation = 'screen';
+    const gold = fx === 'super' || fx === 'oneofone';
+    const stops = gold ? ['#e9c977', '#fff3c4', '#d4a63a', '#fff6d6', '#c9971f', '#f7e2a0'] : ['#d4d9df', '#ffb3e2', '#b3efff', '#fff7b3', '#d6c2ff', '#eef1f4'];
+    stops.forEach((s, i) => grad.addColorStop(i / (stops.length - 1), s));
+    g.globalCompositeOperation = 'multiply';
+    g.globalAlpha = 0.85;
     g.fillStyle = grad;
     g.fillRect(-cw / 2, -ch / 2, cw, ch);
+    g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
   }
   g.restore();
