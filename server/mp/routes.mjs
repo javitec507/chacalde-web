@@ -1,4 +1,4 @@
-// Panel routes for the Mystery Pack console (under the secret admin path) — /<ADMIN_PATH>/mp/...
+// Mystery Pack: the console on its own secret path (/<MP_PATH>/...) and the public /canje page behind the campaign switch.
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,10 +17,13 @@ const STATIC = {
   'atkinson-700.ttf': ['fonts/atkinson-700.ttf', 'font/ttf'],
   'atkinson-400.ttf': ['fonts/atkinson-400.ttf', 'font/ttf'],
   'doto-900.ttf': ['fonts/doto-900.ttf', 'font/ttf'],
-  'canje.js': ['canje.js', 'text/javascript; charset=utf-8'],
-  'canje.css': ['canje.css', 'text/css; charset=utf-8']
+  // the claim page: React build (vite.canje.config.js) + the landing's card art
+  'canje.js': ['build/canje.js', 'text/javascript; charset=utf-8'],
+  'canje.css': ['build/canje.css', 'text/css; charset=utf-8'],
+  'hero-front.jpg': ['canje-assets/hero-front.jpg', 'image/jpeg'],
+  'hero-back.jpg': ['canje-assets/hero-back.jpg', 'image/jpeg']
 };
-const PUBLIC_ASSETS = new Set(['canje.js', 'canje.css', 'archivo-display.ttf', 'atkinson-700.ttf', 'atkinson-400.ttf', 'doto-900.ttf']);
+const PUBLIC_ASSETS = new Set(['canje.js', 'canje.css', 'hero-front.jpg', 'hero-back.jpg', 'archivo-display.ttf', 'atkinson-700.ttf', 'atkinson-400.ttf', 'doto-900.ttf']);
 const IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
 const FILE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 
@@ -90,9 +93,9 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
 
   function consoleHtml(me) {
     const cfg = { base, user: me.user, owner: me.owner };
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin"><title>Mystery Pack · Panel Chacalde</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="${base}/mp/static/console.css"></head>
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin"><title>Consola · Chacalde Mystery Pack</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="${base}/static/console.css"></head>
 <body><div id="app" data-cfg="${JSON.stringify(cfg).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"><p class="boot">Cargando…</p></div>
-<script src="${base}/mp/static/qrcode.js"></script><script src="${base}/mp/static/pdf-lib.min.js"></script><script src="${base}/mp/static/fontkit.umd.min.js"></script><script src="${base}/mp/static/pdf.js"></script><script src="${base}/mp/static/console.js"></script></body></html>`;
+<script src="${base}/static/qrcode.js"></script><script src="${base}/static/pdf-lib.min.js"></script><script src="${base}/static/fontkit.umd.min.js"></script><script src="${base}/static/pdf.js"></script><script src="${base}/static/console.js"></script></body></html>`;
   }
 
   function canjeHtml(cfg) {
@@ -196,35 +199,35 @@ export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders
       return false;
     },
     async handle(req, res, sub, me) {
-      // sub: "/mp", "/mp/static/x", "/mp/file/x", "/mp/api/x"
-      if (sub === '/mp' || sub === '/mp/') {
+      // sub (relative to the console's secret path): "/", "/static/x", "/file/x", "/api/x", "/canje" (preview)…
+      if (sub === '/') {
         return send(res, 200, consoleHtml(me), { ...headers, 'Content-Security-Policy': CONSOLE_CSP, 'Content-Type': 'text/html; charset=utf-8' });
       }
-      if (sub.startsWith('/mp/static/')) {
-        const name = sub.slice('/mp/static/'.length);
+      if (sub.startsWith('/static/')) {
+        const name = sub.slice('/static/'.length);
         const a = STATIC[name] && asset(name);
         if (!a) return send(res, 404, 'Not Found', headers);
         return send(res, 200, a.buf, { ...headers, 'Content-Type': a.type, 'Cache-Control': 'private, max-age=300' });
       }
-      if (sub === '/mp/canje') {
-        return send(res, 200, canjeHtml({ api: `${base}/mp/canje-api`, assets: `${base}/mp/canje-s`, preview: true, closed: false }), { ...headers, 'Content-Security-Policy': CANJE_CSP, 'Content-Type': 'text/html; charset=utf-8' });
+      if (sub === '/canje') {
+        return send(res, 200, canjeHtml({ api: `${base}/canje-api`, assets: `${base}/canje-s`, preview: true, closed: false }), { ...headers, 'Content-Security-Policy': CANJE_CSP, 'Content-Type': 'text/html; charset=utf-8' });
       }
-      if (sub.startsWith('/mp/canje-s/')) return canjeAsset(res, sub.slice('/mp/canje-s/'.length), headers);
-      if (sub.startsWith('/mp/canje-api/')) return canjeApi(req, res, sub.slice('/mp/canje-api/'.length), { preview: true });
-      if (sub.startsWith('/mp/claim-photo/')) {
-        const name = sub.slice('/mp/claim-photo/'.length);
+      if (sub.startsWith('/canje-s/')) return canjeAsset(res, sub.slice('/canje-s/'.length), headers);
+      if (sub.startsWith('/canje-api/')) return canjeApi(req, res, sub.slice('/canje-api/'.length), { preview: true });
+      if (sub.startsWith('/claim-photo/')) {
+        const name = sub.slice('/claim-photo/'.length);
         if (!/^[a-f0-9]{24}\.jpg$/.test(name) || !existsSync(join(claimsDir, name))) return send(res, 404, 'Not Found', headers);
         return send(res, 200, readFileSync(join(claimsDir, name)), { ...headers, 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' });
       }
-      if (sub.startsWith('/mp/file/')) {
-        const name = sub.slice('/mp/file/'.length);
+      if (sub.startsWith('/file/')) {
+        const name = sub.slice('/file/'.length);
         if (!/^[a-f0-9]{24}\.(png|jpg|webp)$/.test(name)) return send(res, 404, 'Not Found', headers);
         const p = join(mp.files, name);
         if (!existsSync(p)) return send(res, 404, 'Not Found', headers);
         return send(res, 200, readFileSync(p), { ...headers, 'Content-Type': FILE_TYPES[extname(name)], 'Cache-Control': 'private, max-age=31536000, immutable' });
       }
-      if (!sub.startsWith('/mp/api/')) return send(res, 404, 'Not Found', headers);
-      const action = sub.slice('/mp/api/'.length);
+      if (!sub.startsWith('/api/')) return send(res, 404, 'Not Found', headers);
+      const action = sub.slice('/api/'.length);
       if (req.method === 'GET' && action === 'state') return json(res, 200, { ...mp.view(), me });
       if (req.method !== 'POST') return send(res, 405, 'Method Not Allowed', { ...headers, Allow: 'GET, POST' });
       if (!sameSite(req)) return send(res, 403, 'Forbidden', headers);

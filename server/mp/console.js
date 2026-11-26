@@ -38,7 +38,7 @@
   }
 
   async function api(action, data) {
-    const r = await fetch(`${B}/mp/api/${action}`, {
+    const r = await fetch(`${B}/api/${action}`, {
       method: data === undefined ? 'GET' : 'POST',
       headers: data === undefined ? {} : { 'Content-Type': 'application/json' },
       body: data === undefined ? undefined : JSON.stringify(data),
@@ -79,11 +79,11 @@
   function ctxFor(card, code) {
     const v = S.variants[card.variantId] || {};
     const full = code || `${S.settings.edition.code}-${v.abbr || 'XX'}-••••-${card.last4 || '••••'}`;
-    return { name: card.name, variant: v.name, n: card.n, total: v.total, code: full, edition: S.settings.edition.name, url: `${location.origin}/canje#${full}` };
+    return { name: card.name, variant: v.name, n: card.n, total: v.total, code: full, edition: S.settings.edition.name, expires: S.settings.edition.expires, url: `${location.origin}/canje#${full}` };
   }
   function sampleCtx() {
     const card = S.cards.find((c) => c.id === ui.sample) || S.cards[0];
-    if (!card) return { name: 'Nombre del premio', variant: 'Holo', n: 3, total: 25, code: `${S.settings.edition.code}-HL-K7Q4-9XWD`, edition: S.settings.edition.name, url: `${location.origin}/canje#${S.settings.edition.code}-HL-K7Q4-9XWD` };
+    if (!card) return { name: 'Nombre del premio', variant: 'Holo', n: 3, total: 25, code: `${S.settings.edition.code}-HL-K7Q4-9XWD`, edition: S.settings.edition.name, expires: S.settings.edition.expires, url: `${location.origin}/canje#${S.settings.edition.code}-HL-K7Q4-9XWD` };
     const code = (ui.codes[card.variantId] || {})[card.id];
     return { ...ctxFor(card, code), name: card.name || 'Nombre del premio' };
   }
@@ -169,7 +169,7 @@
     const st = S.settings.campaign.state;
     root.innerHTML = `<header class="top"><div class="in"><a class="brand" href="${B}"><img src="/img/logo-white.png" alt="Chacalde"><span>Mystery Pack · Redemption Cards</span></a>
 <span class="pill ${st === 'on' ? 'ok' : st === 'off' ? 'warn' : ''}">Campaña ${st === 'on' ? 'activa' : st === 'off' ? 'apagada' : 'cerrada'}</span>
-<nav><span class="note" style="margin:0;align-self:center">${esc(CFG.user)}${CFG.owner ? ' · dueño' : ''}</span><a class="btn" href="${B}">← Panel</a></nav></div></header>
+<nav><span class="note" style="margin:0;align-self:center">${esc(CFG.user)}${CFG.owner ? ' · dueño' : ''}</span><form method="post" action="${B}/logout" style="margin:0"><button class="btn" type="submit">Salir</button></form></nav></div></header>
 <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" data-act="tab" data-k="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join('')}</div>
 <main id="main"></main>`;
     const main = $('#main');
@@ -198,7 +198,7 @@
         const v = S.variants[card.variantId] || {};
         const [label, lv] = CLAIM_STATUS[c.status] || [c.status, ''];
         const wa = c.phone ? `https://wa.me/${c.phone.replace(/\D/g, '')}` : '';
-        const photo = (f2, t) => (f2 ? `<a href="${B}/mp/claim-photo/${f2}" target="_blank" rel="noopener"><img src="${B}/mp/claim-photo/${f2}" alt="${t}" style="width:110px;height:146px;object-fit:cover;border:1px solid var(--line-2);border-radius:3px;display:block"></a>` : `<div class="note" style="width:110px">Sin foto (${t})</div>`);
+        const photo = (f2, t) => (f2 ? `<a href="${B}/claim-photo/${f2}" target="_blank" rel="noopener"><img src="${B}/claim-photo/${f2}" alt="${t}" style="width:110px;height:146px;object-fit:cover;border:1px solid var(--line-2);border-radius:3px;display:block"></a>` : `<div class="note" style="width:110px">Sin foto (${t})</div>`);
         const acts = {
           pending: `<button class="btn sm primary" data-act="claim" data-a="approve" data-id="${c.id}">Aprobar</button><button class="btn sm danger" data-act="claim" data-a="reject" data-id="${c.id}">Rechazar</button>`,
           approved: `<button class="btn sm primary" data-act="claim" data-a="prepare" data-id="${c.id}">Marcar preparado</button><button class="btn sm" data-act="slip" data-id="${c.id}">Comprobante PDF</button><button class="btn sm danger" data-act="claim" data-a="reject" data-id="${c.id}">Rechazar</button>`,
@@ -215,7 +215,7 @@
 <div class="row" style="margin-top:14px">${acts}</div></section>`;
       })
       .join('');
-    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><div><h2 class="display">Canjes</h2><p class="note">Revisa las fotos, aprueba y marca cada paso. Los datos personales se borran solos 90 días después de entregar.</p></div><a class="btn" href="${B}/mp/canje" target="_blank" rel="noopener">Ver la ventanilla (vista previa)</a></div><div class="row">${tabs}</div></section>
+    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><div><h2 class="display">Canjes</h2><p class="note">Revisa las fotos, aprueba y marca cada paso. Los datos personales se borran solos 90 días después de entregar.</p></div><a class="btn" href="${B}/canje" target="_blank" rel="noopener">Ver página de canje (vista previa)</a></div><div class="row">${tabs}</div></section>
 ${items || '<section class="card"><p class="note">No hay canjes en esta lista.</p></section>'}`;
   }
 
@@ -346,6 +346,7 @@ ${info}<p class="note" style="margin-top:-8px">${need}</p>
     code: { font: 'doto', size: 11, h: 6 },
     qr: { w: 18, h: 18 },
     edition: { font: 'atkinson', size: 8, h: 5, upper: true, tracking: 0.2 },
+    expires: { font: 'archivo', size: 9, h: 5 },
     text: { font: 'atkinson', size: 9, h: 5, text: 'Texto' }
   };
 
@@ -374,7 +375,7 @@ ${info}<p class="note" style="margin-top:-8px">${need}</p>
     stage.style.width = `${W}px`;
     stage.style.height = `${H}px`;
     const art = side.preview || side.file;
-    stage.innerHTML = `${art ? `<img class="art" src="${B}/mp/file/${art}" alt="">` : '<div class="empty">Sube el arte de este lado.<br>Debe cubrir la carta + sangrado.</div>'}
+    stage.innerHTML = `${art ? `<img class="art" src="${B}/file/${art}" alt="">` : '<div class="empty">Sube el arte de este lado.<br>Debe cubrir la carta + sangrado.</div>'}
 <div class="trim" style="left:${st.bleed * k}px;top:${st.bleed * k}px;width:${st.trimW * k}px;height:${st.trimH * k}px"></div>
 <div class="safe" style="left:${(st.bleed + st.safe) * k}px;top:${(st.bleed + st.safe) * k}px;width:${(st.trimW - 2 * st.safe) * k}px;height:${(st.trimH - 2 * st.safe) * k}px"></div>
 <svg class="ink" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -500,7 +501,7 @@ ${isQr ? '<p class="note" style="margin-top:8px">El QR abre chacalde.com/canje c
 <div class="row" style="margin-top:8px"><div class="f w2"><label>Alineación</label><select id="p-align">${[['left', 'Izquierda'], ['center', 'Centro'], ['right', 'Derecha']].map(([k, l]) => `<option value="${k}"${k === f.align ? ' selected' : ''}>${l}</option>`).join('')}</select></div><div class="f w1"><label>Espaciado</label><input id="p-tr" type="number" step="0.02" value="${f.tracking}"></div></div>
 <div class="row" style="margin-top:8px"><label class="check"><input id="p-up" type="checkbox"${f.upper ? ' checked' : ''}> MAYÚSCULAS</label></div>`}
 <div class="row" style="margin-top:8px"><div class="f"><label>Color</label><input id="p-color" type="color" value="${f.color}"></div></div>
-${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px"><label>${f.key === 'number' ? 'Formato' : 'Texto'} · variables: {name} {variant} {n} {total} {code} {edition}</label><input id="p-text" value="${esc(f.text)}" maxlength="160"></div>` : ''}
+${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px"><label>${f.key === 'number' ? 'Formato' : 'Texto'} · variables: {name} {variant} {n} {total} {code} {edition} {expires}</label><input id="p-text" value="${esc(f.text)}" maxlength="160"></div>` : ''}
 <div class="row" style="margin-top:12px"><button class="btn danger sm" data-act="del-f">Quitar campo</button></div>`;
     const bind = (id, key, cast) => {
       const el = $(`#${id}`);
@@ -546,7 +547,7 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
     pc.getContext('2d').drawImage(bmp, 0, 0, pc.width, pc.height);
     const preview = await pc.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
     const up = async (blob, t) => {
-      const r = await fetch(`${B}/mp/api/file`, { method: 'POST', headers: { 'Content-Type': t }, body: blob, credentials: 'same-origin' });
+      const r = await fetch(`${B}/api/file`, { method: 'POST', headers: { 'Content-Type': t }, body: blob, credentials: 'same-origin' });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'No se pudo subir');
       return j.file;
@@ -809,7 +810,7 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
         const card = S.cards.find((x) => x.id === c.cardId) || {};
         const v = S.variants[card.variantId] || {};
         return act(async () => {
-          const bytes = await P.buildSlip({ base: B, claim: c, card, variant: v, edition: S.settings.edition, url: `${location.origin}${B}/mp#entrega=${c.id}` });
+          const bytes = await P.buildSlip({ base: B, claim: c, card, variant: v, edition: S.settings.edition, url: `${location.origin}${B}#entrega=${c.id}` });
           download(bytes, `comprobante-${c.no}.pdf`, 'application/pdf');
         }, 'Comprobante listo.');
       }

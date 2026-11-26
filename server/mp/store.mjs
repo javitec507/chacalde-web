@@ -8,7 +8,7 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt } 
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // 31 symbols: no 0/O, 1/I/L
 const RAND = 7; // + 1 check symbol = 8
 
-export const FIELD_KEYS = ['name', 'variant', 'number', 'code', 'qr', 'edition', 'text'];
+export const FIELD_KEYS = ['name', 'variant', 'number', 'code', 'qr', 'edition', 'expires', 'text'];
 export const FONTS = ['archivo', 'atkinson', 'atkinson-regular', 'doto'];
 export const STATES = ['off', 'on', 'closed'];
 const CARD_STATUS = ['available', 'claimed', 'approved', 'prepared', 'delivered', 'void'];
@@ -337,6 +337,7 @@ export class MysteryPack {
       color: v.color,
       effect: v.effect,
       edition: this.data.settings.edition.name,
+      expires: this.data.settings.edition.expires,
       art: front && (front.preview || front.file) ? { file: front.preview || front.file, fields: front.fields.filter((f) => f.key !== 'qr' && f.key !== 'code') } : null,
       card: this.data.settings.card
     };

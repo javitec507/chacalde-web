@@ -5,14 +5,16 @@
   const PT_MM = 25.4 / 72; // mm per pt
   const FONT_FILES = { archivo: 'archivo-display.ttf', atkinson: 'atkinson-700.ttf', 'atkinson-regular': 'atkinson-400.ttf', doto: 'doto-900.ttf' };
   const CSS_FONTS = { archivo: 'MPArchivo', atkinson: 'MPAtkinson', 'atkinson-regular': 'MPAtkinsonR', doto: 'MPDoto' };
-  const LABELS = { name: 'Nombre', variant: 'Variante', number: 'Numeración', code: 'Código', qr: 'QR', edition: 'Edición', text: 'Texto' };
+  const LABELS = { name: 'Nombre', variant: 'Variante', number: 'Numeración', code: 'Código', qr: 'QR', edition: 'Edición', expires: 'Vence', text: 'Texto' };
+  // 2028-12-31 -> 31/12/2028 (what the card prints after "Válido hasta el")
+  const dmy = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.split('-').reverse().join('/') : '');
   const CAP = 0.35; // baseline offset from the box centre, in em
 
   const pad = (n, total) => String(n).padStart(String(total).length, '0');
 
   /** Text a field prints for one card. ctx: { name, variant, n, total, code, edition, url } */
   function fieldText(f, ctx) {
-    const vars = { name: ctx.name || '', variant: ctx.variant || '', n: pad(ctx.n || 0, ctx.total || 0), total: String(ctx.total || 0), code: ctx.code || '', edition: ctx.edition || '' };
+    const vars = { name: ctx.name || '', variant: ctx.variant || '', n: pad(ctx.n || 0, ctx.total || 0), total: String(ctx.total || 0), code: ctx.code || '', edition: ctx.edition || '', expires: dmy(ctx.expires) };
     let t;
     if (f.key === 'qr') return ctx.url || '';
     if (f.key === 'number') t = (f.text || 'N° {n}/{total}').replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
@@ -79,13 +81,13 @@
     const doc = await PDFDocument.create();
     doc.registerFontkit(window.fontkit);
     const fonts = {};
-    for (const [k, file] of Object.entries(FONT_FILES)) fonts[k] = await doc.embedFont(await fetchBytes(`${base}/mp/static/${file}`), { subset: false }); // full fonts: subsetting breaks composite glyphs (Doto)
+    for (const [k, file] of Object.entries(FONT_FILES)) fonts[k] = await doc.embedFont(await fetchBytes(`${base}/static/${file}`), { subset: false }); // full fonts: subsetting breaks composite glyphs (Doto)
     return { doc, fonts, images: new Map() };
   }
 
   async function image(ctx, base, file) {
     if (!ctx.images.has(file)) {
-      const bytes = await fetchBytes(`${base}/mp/file/${file}`);
+      const bytes = await fetchBytes(`${base}/file/${file}`);
       ctx.images.set(file, file.endsWith('.png') ? await ctx.doc.embedPng(bytes) : await ctx.doc.embedJpg(bytes));
     }
     return ctx.images.get(file);
