@@ -19,6 +19,8 @@ npm run dev
 
 En Coolify: *Build pack* = Dockerfile, puerto 80, almacenamiento persistente montado en `/data` y las variables `ADMIN_PATH` (ruta secreta del panel: `/` + 10 a 63 minúsculas, números o guiones), `ADMIN_PASSWORD` (12+ caracteres) y, opcional, `ADMIN_USER` (usuario del dueño, por defecto `admin`). Sin ruta o sin contraseña no hay panel; el sitio y el conteo siguen funcionando. Desde el panel, el dueño crea usuarios de solo lectura (contraseña generada, guardada con scrypt en `/data/users.json`).
 
+**Mystery Pack (Redemption Cards)** es aparte del panel: su consola vive en otra ruta secreta, `MP_PATH` (mismo formato que `ADMIN_PATH`), con su propio inicio de sesión (mismos usuarios, sesión separada). Ahí se diseñan y exportan las cartas y se gestionan los canjes. La página pública `chacalde.com/canje` es una segunda compilación de React (`vite.canje.config.js` → `server/mp/build/`) y solo existe mientras la campaña está encendida; la consola tiene una vista previa.
+
 No se guardan nombres, IP ni cookies de visitantes. Las visitas repetidas de un mismo navegador en 30 minutos cuentan una vez y cada navegador suma como máximo 20 eventos de un mismo tipo cada 10 minutos.
 
 ## Estructura
