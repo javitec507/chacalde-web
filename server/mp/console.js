@@ -163,7 +163,8 @@
       ['campana', 'Campaña'],
       ['variantes', 'Variantes y cartas'],
       ['disenos', 'Diseños'],
-      ['imprenta', 'Imprenta']
+      ['imprenta', 'Imprenta'],
+      ['canjes', `Canjes${S.claims.filter((c) => c.status === 'pending').length ? ` (${S.claims.filter((c) => c.status === 'pending').length})` : ''}`]
     ];
     const st = S.settings.campaign.state;
     root.innerHTML = `<header class="top"><div class="in"><a class="brand" href="${B}"><img src="/img/logo-white.png" alt="Chacalde"><span>Mystery Pack · Redemption Cards</span></a>
@@ -179,6 +180,43 @@
       mountEditor();
     }
     if (ui.tab === 'imprenta') main.innerHTML = viewPrint();
+    if (ui.tab === 'canjes') main.innerHTML = viewClaims();
+  }
+
+  // ---------- claims ----------
+  const CLAIM_STATUS = { pending: ['Por aprobar', 'warn'], approved: ['Aprobado', 'ok'], prepared: ['Preparado', 'ok'], delivered: ['Entregado', 'ok'], rejected: ['Rechazado', 'bad'] };
+  function viewClaims() {
+    const f = ui.claimFilter || 'open';
+    const list = S.claims.filter((c) => (f === 'open' ? ['pending', 'approved', 'prepared'].includes(c.status) : f === 'all' ? true : c.status === f));
+    const tabs = [['open', 'Abiertos'], ['pending', 'Por aprobar'], ['approved', 'Aprobados'], ['prepared', 'Preparados'], ['delivered', 'Entregados'], ['rejected', 'Rechazados'], ['all', 'Todos']]
+      .map(([k, l]) => `<button class="btn sm${f === k ? ' on' : ''}" data-act="cfilter" data-k="${k}">${l}</button>`)
+      .join('');
+    const fmt = (iso) => new Date(iso).toLocaleString('es-PA', { dateStyle: 'medium', timeStyle: 'short' });
+    const items = list
+      .map((c) => {
+        const card = S.cards.find((x) => x.id === c.cardId) || {};
+        const v = S.variants[card.variantId] || {};
+        const [label, lv] = CLAIM_STATUS[c.status] || [c.status, ''];
+        const wa = c.phone ? `https://wa.me/${c.phone.replace(/\D/g, '')}` : '';
+        const photo = (f2, t) => (f2 ? `<a href="${B}/mp/claim-photo/${f2}" target="_blank" rel="noopener"><img src="${B}/mp/claim-photo/${f2}" alt="${t}" style="width:110px;height:146px;object-fit:cover;border:1px solid var(--line-2);border-radius:3px;display:block"></a>` : `<div class="note" style="width:110px">Sin foto (${t})</div>`);
+        const acts = {
+          pending: `<button class="btn sm primary" data-act="claim" data-a="approve" data-id="${c.id}">Aprobar</button><button class="btn sm danger" data-act="claim" data-a="reject" data-id="${c.id}">Rechazar</button>`,
+          approved: `<button class="btn sm primary" data-act="claim" data-a="prepare" data-id="${c.id}">Marcar preparado</button><button class="btn sm" data-act="slip" data-id="${c.id}">Comprobante PDF</button><button class="btn sm danger" data-act="claim" data-a="reject" data-id="${c.id}">Rechazar</button>`,
+          prepared: `<button class="btn sm primary" data-act="claim" data-a="deliver" data-id="${c.id}">Marcar entregado</button><button class="btn sm" data-act="slip" data-id="${c.id}">Comprobante PDF</button>`,
+          delivered: `<button class="btn sm" data-act="slip" data-id="${c.id}">Comprobante PDF</button>`,
+          rejected: ''
+        }[c.status];
+        return `<section class="card" id="claim-${c.id}"${ui.focusClaim === c.id ? ' style="border-color:#ffe14d"' : ''}><div class="row" style="justify-content:space-between;align-items:flex-start"><div><p class="lbl" style="margin:0">Canje ${esc(c.no)} · ${esc(fmt(c.at))}</p>
+<h2 class="display" style="font-size:24px;margin-top:6px"><span class="sw" style="display:inline-block;width:14px;height:18px;vertical-align:middle;background:${esc(v.color || '#888')}"></span> ${esc(card.name || '—')}</h2>
+<p class="note" style="margin:4px 0 0">${esc(v.name || '')} ${esc(v.abbr || '')} · N° ${card.n ? `${P.pad(card.n, v.total)}/${v.total}` : '—'} · Ubicación: ${esc(card.location || 'sin definir')} · Protector: ${esc(v.protector || '—')}</p></div><span class="pill ${lv}">${label}</span></div>
+<div class="row" style="margin-top:14px;align-items:flex-start;gap:24px"><div style="min-width:240px;flex:1"><p style="margin:0"><b>${esc(c.name)}</b></p><p class="note" style="margin:4px 0 0">${wa ? `<a href="${wa}" target="_blank" rel="noopener">WhatsApp ${esc(c.phone)}</a>` : ''}${c.email ? ` · ${esc(c.email)}` : ''}</p><p class="note" style="margin:4px 0 0">Entrega: ${esc(c.delivery)}${c.address ? ` · ${esc(c.address)}` : ''}</p>${c.notes ? `<p class="note" style="margin:4px 0 0">${esc(c.notes)}</p>` : ''}
+<ul class="issues" style="margin-top:10px">${c.history.map((h) => `<li>${esc(fmt(h.at))} · ${esc(h.what)} · ${esc(h.by)}</li>`).join('')}</ul></div>
+<div class="row">${photo(c.photos.front, 'frente')}${photo(c.photos.back, 'reverso')}</div></div>
+<div class="row" style="margin-top:14px">${acts}</div></section>`;
+      })
+      .join('');
+    return `<section class="card"><div class="row" style="justify-content:space-between;align-items:center"><div><h2 class="display">Canjes</h2><p class="note">Revisa las fotos, aprueba y marca cada paso. Los datos personales se borran solos 90 días después de entregar.</p></div><a class="btn" href="${B}/mp/canje" target="_blank" rel="noopener">Ver la ventanilla (vista previa)</a></div><div class="row">${tabs}</div></section>
+${items || '<section class="card"><p class="note">No hay canjes en esta lista.</p></section>'}`;
   }
 
   // ---------- campaign ----------
@@ -208,6 +246,7 @@
 <div class="row"><div class="f w1"><label>Código</label><input id="e-code" value="${esc(e.code)}" maxlength="8"></div><div class="f w3"><label>Nombre de la edición</label><input id="e-name" value="${esc(e.name)}" maxlength="60"></div><div class="f w2"><label>Vence</label><input id="e-exp" type="date" value="${esc(e.expires)}"></div></div>
 <div class="row" style="margin-top:12px"><div class="f w1"><label>Ancho (mm)</label><input id="c-w" type="number" step="0.1" value="${c.trimW}"></div><div class="f w1"><label>Alto (mm)</label><input id="c-h" type="number" step="0.1" value="${c.trimH}"></div><div class="f w1"><label>Sangrado</label><input id="c-b" type="number" step="0.5" value="${c.bleed}"></div><div class="f w1"><label>Zona segura</label><input id="c-s" type="number" step="0.5" value="${c.safe}"></div>
 <div class="f w2"><label>Diseño por defecto</label><select id="c-dd"><option value="">—</option>${designs().map((d) => `<option value="${d.id}"${d.id === s.defaultDesign ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
+<div class="f grow"><label>Formas de entrega (una por línea)</label><textarea id="c-del" style="min-height:70px">${esc((s.delivery || []).join('\n'))}</textarea></div>
 <label class="check"><input id="c-m" type="checkbox"${c.marks ? ' checked' : ''}> Marcas de corte</label><label class="check"><input id="c-pc" type="checkbox"${s.photoCheck ? ' checked' : ''}> Pedir foto de la tarjeta al canjear</label>
 <button class="btn primary" data-act="save-settings">Guardar</button></div></section>
 <section class="card"><h2 class="display">Bitácora</h2><div class="tablewrap" style="max-height:340px"><table><tbody>${S.audit.map((a) => `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(new Date(a.at).toLocaleString('es-PA'))}</td><td>${esc(a.by)}</td><td>${esc(a.what)}</td></tr>`).join('') || '<tr><td>Sin movimientos todavía.</td></tr>'}</tbody></table></div></section>`;
@@ -620,7 +659,8 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
               edition: { code: $('#e-code').value, name: $('#e-name').value, expires: $('#e-exp').value },
               card: { trimW: $('#c-w').value, trimH: $('#c-h').value, bleed: $('#c-b').value, safe: $('#c-s').value, marks: $('#c-m').checked },
               defaultDesign: $('#c-dd').value || null,
-              photoCheck: $('#c-pc').checked
+              photoCheck: $('#c-pc').checked,
+              delivery: $('#c-del').value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
             }),
           'Ajustes guardados.'
         );
@@ -752,6 +792,27 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
         ui.dirty = true;
         return render();
       }
+      case 'cfilter':
+        ui.claimFilter = t.dataset.k;
+        return render();
+      case 'claim': {
+        const action = t.dataset.a;
+        let note = '';
+        if (action === 'reject') {
+          note = window.prompt('Motivo del rechazo (el código vuelve a quedar disponible):', '');
+          if (note === null) return;
+        }
+        return act(() => api('claim', { id, action, note }), { approve: 'Canje aprobado.', prepare: 'Marcado como preparado.', deliver: 'Marcado como entregado.', reject: 'Canje rechazado; el código quedó libre.' }[action]);
+      }
+      case 'slip': {
+        const c = S.claims.find((x) => x.id === id);
+        const card = S.cards.find((x) => x.id === c.cardId) || {};
+        const v = S.variants[card.variantId] || {};
+        return act(async () => {
+          const bytes = await P.buildSlip({ base: B, claim: c, card, variant: v, edition: S.settings.edition, url: `${location.origin}${B}/mp#entrega=${c.id}` });
+          download(bytes, `comprobante-${c.no}.pdf`, 'application/pdf');
+        }, 'Comprobante listo.');
+      }
       case 'check':
         preflight(S.variants[id]);
         return render();
@@ -827,7 +888,14 @@ ${f.key === 'number' || f.key === 'text' ? `<div class="f" style="margin-top:8px
     .then(() => api('state'))
     .then(() => {
       if (S.cards[0]) ui.sample = S.cards[0].id;
+      const m = location.hash.match(/^#entrega=([a-f0-9]{16})$/);
+      if (m && S.claims.some((c) => c.id === m[1])) {
+        ui.tab = 'canjes';
+        ui.claimFilter = 'all';
+        ui.focusClaim = m[1];
+      }
       render();
+      if (ui.focusClaim) document.getElementById(`claim-${ui.focusClaim}`)?.scrollIntoView({ block: 'center' });
     })
     .catch((e) => {
       root.innerHTML = `<p class="boot">No se pudo cargar: ${esc(e.message)}</p>`;

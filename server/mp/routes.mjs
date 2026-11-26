@@ -1,8 +1,8 @@
 // Panel routes for the Mystery Pack console (under the secret admin path) — /<ADMIN_PATH>/mp/...
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { MysteryPack } from './store.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -16,11 +16,16 @@ const STATIC = {
   'archivo-display.ttf': ['fonts/archivo-display.ttf', 'font/ttf'],
   'atkinson-700.ttf': ['fonts/atkinson-700.ttf', 'font/ttf'],
   'atkinson-400.ttf': ['fonts/atkinson-400.ttf', 'font/ttf'],
-  'doto-900.ttf': ['fonts/doto-900.ttf', 'font/ttf']
+  'doto-900.ttf': ['fonts/doto-900.ttf', 'font/ttf'],
+  'canje.js': ['canje.js', 'text/javascript; charset=utf-8'],
+  'canje.css': ['canje.css', 'text/css; charset=utf-8']
 };
+const PUBLIC_ASSETS = new Set(['canje.js', 'canje.css', 'archivo-display.ttf', 'atkinson-700.ttf', 'atkinson-400.ttf', 'doto-900.ttf']);
 const IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
 const FILE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 
+export const CANJE_CSP =
+  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 export const CONSOLE_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
@@ -40,8 +45,36 @@ function readRaw(req, limit) {
   });
 }
 
-export function createMp({ dataDir, base, send, sameSite, headers }) {
+export function createMp({ dataDir, base, send, sameSite, headers, publicHeaders, clientIp }) {
   const mp = new MysteryPack(join(dataDir, 'mp'));
+  const claimsDir = join(mp.dir, 'claims');
+  mkdirSync(claimsDir, { recursive: true });
+  // Personal data of old claims goes away by itself (90 days after delivery).
+  const purge = () => {
+    for (const f of mp.purge(90)) {
+      try {
+        unlinkSync(join(claimsDir, f));
+      } catch {
+        /* already gone */
+      }
+    }
+  };
+  purge();
+  setInterval(purge, 12 * 3600_000).unref();
+  // Rate limits for the public page, per client IP.
+  const hits = new Map();
+  const tooMany = (req, kind, max, windowMs) => {
+    const k = `${kind}:${clientIp(req)}`;
+    const t = Date.now();
+    let h = hits.get(k);
+    if (!h || t - h.since > windowMs) hits.set(k, (h = { n: 0, since: t }));
+    h.n += 1;
+    return h.n > max;
+  };
+  setInterval(() => {
+    const cut = Date.now() - 3600_000;
+    for (const [k, h] of hits) if (h.since < cut) hits.delete(k);
+  }, 600_000).unref();
   const cache = new Map();
   const asset = (name) => {
     if (!cache.has(name)) {
@@ -62,6 +95,78 @@ export function createMp({ dataDir, base, send, sameSite, headers }) {
 <script src="${base}/mp/static/qrcode.js"></script><script src="${base}/mp/static/pdf-lib.min.js"></script><script src="${base}/mp/static/fontkit.umd.min.js"></script><script src="${base}/mp/static/pdf.js"></script><script src="${base}/mp/static/console.js"></script></body></html>`;
   }
 
+  function canjeHtml(cfg) {
+    const data = JSON.stringify(cfg).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex"><meta name="referrer" content="same-origin"><meta name="theme-color" content="#0a0a0a"><title>Canje · Mystery Pack Chacalde</title><link rel="icon" type="image/png" href="/favicon.png"><link rel="stylesheet" href="${cfg.assets}/canje.css"></head>
+<body><div id="app" data-cfg="${data}"></div><script src="${cfg.assets}/canje.js"></script></body></html>`;
+  }
+
+  // Public claim API (also used, as a dry run, by the panel's preview).
+  async function canjeApi(req, res, action, { preview }) {
+    const h = { ...publicHeaders, 'Cache-Control': 'no-store' };
+    const out = (status, b) => send(res, status, JSON.stringify(b), { ...h, 'Content-Type': 'application/json; charset=utf-8' });
+    if (req.method !== 'POST') return send(res, 405, 'Method Not Allowed', { ...h, Allow: 'POST' });
+    if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
+    const st = mp.data.settings;
+    if (!preview && st.campaign.state === 'closed') return out(410, { error: 'La campaña ya terminó.' });
+    if (action === 'check') {
+      if (!preview && tooMany(req, 'check', 20, 10 * 60_000)) return out(429, { error: 'Demasiados intentos. Espera unos minutos y vuelve a probar.' });
+      let b;
+      try {
+        b = await body(req, 4096);
+      } catch (e) {
+        return out(400, { error: e.message });
+      }
+      const card = mp.findByCode(b.code);
+      if (!card || card.status === 'void') return out(404, { error: 'Ese código no existe. Revisa que esté bien escrito.' });
+      if (card.status !== 'available') return out(409, { error: 'Este código ya fue canjeado.', card: mp.publicCard(card) });
+      return out(200, { card: mp.publicCard(card), photoCheck: st.photoCheck, delivery: st.delivery });
+    }
+    if (action === 'photo') {
+      if (!preview && tooMany(req, 'photo', 12, 60 * 60_000)) return out(429, { error: 'Demasiadas fotos. Espera un rato.' });
+      const card = mp.findByCode(req.headers['x-code']);
+      if (!card || card.status !== 'available') return out(400, { error: 'Primero revisa un código válido.' });
+      if (String(req.headers['content-type'] || '').split(';')[0] !== 'image/jpeg') return out(400, { error: 'La foto debe ser JPG.' });
+      const buf = await readRaw(req, 4 * 1024 * 1024);
+      if (!buf || buf.length < 1000 || buf[0] !== 0xff || buf[1] !== 0xd8) return out(400, { error: 'No pudimos leer esa foto. Prueba con otra.' });
+      if (preview) return out(200, { photo: 'preview.jpg' });
+      const name = `${randomBytes(12).toString('hex')}.jpg`;
+      writeFileSync(join(claimsDir, name), buf, { mode: 0o600 });
+      return out(200, { photo: name });
+    }
+    if (action === 'claim') {
+      if (!preview && tooMany(req, 'claim', 6, 60 * 60_000)) return out(429, { error: 'Demasiados intentos. Espera un rato.' });
+      let b;
+      try {
+        b = await body(req, 8192);
+      } catch (e) {
+        return out(400, { error: e.message });
+      }
+      const card = mp.findByCode(b.code);
+      if (!card || card.status === 'void') return out(404, { error: 'Ese código no existe.' });
+      const ok = (f) => typeof f === 'string' && /^[a-f0-9]{24}\.jpg$/.test(f) && existsSync(join(claimsDir, f));
+      const photos = preview ? { front: b.photos?.front ? 'preview' : null, back: b.photos?.back ? 'preview' : null } : { front: ok(b.photos?.front) ? b.photos.front : null, back: ok(b.photos?.back) ? b.photos.back : null };
+      try {
+        const r = mp.claim(card, b, photos, { dry: preview });
+        return out(200, { ...r, card: mp.publicCard(card) });
+      } catch (e) {
+        return out(e.code === 'taken' ? 409 : 400, { error: e.message });
+      }
+    }
+    return send(res, 404, 'Not Found', h);
+  }
+
+  function canjeAsset(res, name, h) {
+    if (name.startsWith('art/')) {
+      const file = name.slice(4);
+      if (!/^[a-f0-9]{24}\.(png|jpg|webp)$/.test(file) || !mp.artAllowed(file) || !existsSync(join(mp.files, file))) return send(res, 404, 'Not Found', h);
+      return send(res, 200, readFileSync(join(mp.files, file)), { ...h, 'Content-Type': FILE_TYPES[extname(file)], 'Cache-Control': 'public, max-age=86400' });
+    }
+    const a = PUBLIC_ASSETS.has(name) && asset(name);
+    if (!a) return send(res, 404, 'Not Found', h);
+    return send(res, 200, a.buf, { ...h, 'Content-Type': a.type, 'Cache-Control': 'public, max-age=300' });
+  }
+
   async function body(req, limit = 2_000_000) {
     const buf = await readRaw(req, limit);
     if (!buf) throw new Error('Demasiado grande.');
@@ -74,6 +179,22 @@ export function createMp({ dataDir, base, send, sameSite, headers }) {
 
   return {
     mp,
+    /** Public /canje and /api/canje/*: only while the campaign is on (or closed, to say so). Otherwise false = not found. */
+    async publicHandle(req, res, path) {
+      const st = mp.data.settings.campaign.state;
+      if (st === 'off') return false;
+      const open = mp.campaignOpen();
+      const h = publicHeaders;
+      if (path === '/canje' || path === '/canje/') {
+        return send(res, 200, canjeHtml({ api: '/api/canje', assets: '/canje/s', preview: false, closed: !open }), { ...h, 'Content-Security-Policy': CANJE_CSP, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      }
+      if (path.startsWith('/canje/s/')) return canjeAsset(res, path.slice('/canje/s/'.length), h);
+      if (path.startsWith('/api/canje/')) {
+        if (!open) return send(res, 410, JSON.stringify({ error: 'La campaña ya terminó.' }), { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        return canjeApi(req, res, path.slice('/api/canje/'.length), { preview: false });
+      }
+      return false;
+    },
     async handle(req, res, sub, me) {
       // sub: "/mp", "/mp/static/x", "/mp/file/x", "/mp/api/x"
       if (sub === '/mp' || sub === '/mp/') {
@@ -84,6 +205,16 @@ export function createMp({ dataDir, base, send, sameSite, headers }) {
         const a = STATIC[name] && asset(name);
         if (!a) return send(res, 404, 'Not Found', headers);
         return send(res, 200, a.buf, { ...headers, 'Content-Type': a.type, 'Cache-Control': 'private, max-age=300' });
+      }
+      if (sub === '/mp/canje') {
+        return send(res, 200, canjeHtml({ api: `${base}/mp/canje-api`, assets: `${base}/mp/canje-s`, preview: true, closed: false }), { ...headers, 'Content-Security-Policy': CANJE_CSP, 'Content-Type': 'text/html; charset=utf-8' });
+      }
+      if (sub.startsWith('/mp/canje-s/')) return canjeAsset(res, sub.slice('/mp/canje-s/'.length), headers);
+      if (sub.startsWith('/mp/canje-api/')) return canjeApi(req, res, sub.slice('/mp/canje-api/'.length), { preview: true });
+      if (sub.startsWith('/mp/claim-photo/')) {
+        const name = sub.slice('/mp/claim-photo/'.length);
+        if (!/^[a-f0-9]{24}\.jpg$/.test(name) || !existsSync(join(claimsDir, name))) return send(res, 404, 'Not Found', headers);
+        return send(res, 200, readFileSync(join(claimsDir, name)), { ...headers, 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' });
       }
       if (sub.startsWith('/mp/file/')) {
         const name = sub.slice('/mp/file/'.length);
@@ -136,6 +267,11 @@ export function createMp({ dataDir, base, send, sameSite, headers }) {
           case 'cards':
             mp.updateCards((await body(req, 5_000_000)).cards, by);
             break;
+          case 'claim': {
+            const b = await body(req);
+            mp.setClaim(b.id, b.action, by, b.note);
+            break;
+          }
           case 'codes': {
             const b = await body(req);
             return json(res, 200, { codes: mp.exportCodes(b.variantId, by, b.purpose === 'print' ? 'print' : 'preview') });

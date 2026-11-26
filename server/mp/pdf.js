@@ -254,5 +254,55 @@
     return ctx.doc.save();
   }
 
-  window.MPPDF = { MM, PT_MM, CAP, LABELS, CSS_FONTS, fieldText, fitSize, qrMatrix, measureCss, isLight, buildPrint, buildSpec, pad };
+  /** Delivery slip that travels with the prize. Its QR opens the claim in the panel to mark it delivered. */
+  async function buildSlip({ base, claim, card, variant, edition, url }) {
+    const { rgb } = window.PDFLib;
+    const ctx = await newDoc(base);
+    ctx.doc.setTitle(`Comprobante ${claim.no}`);
+    const F = ctx.fonts;
+    const page = ctx.doc.addPage([396, 612]); // 5.5 x 8.5 in
+    const ink = rgb(0.07, 0.07, 0.07);
+    const gray = rgb(0.42, 0.42, 0.42);
+    let y = 560;
+    const t = (s, o = {}) => page.drawText(String(s), { x: o.x ?? 36, y, size: o.size ?? 10, font: o.font ?? F['atkinson-regular'], color: o.color ?? ink });
+    t('DISQUE CONSULTORIOS CHACALDE · MYSTERY PACK', { size: 8, font: F.atkinson, color: gray });
+    y -= 30;
+    t('COMPROBANTE DE ENTREGA', { size: 22, font: F.archivo });
+    y -= 40;
+    t(claim.no, { size: 30, font: F.doto });
+    y -= 20;
+    t(new Date(claim.at).toLocaleString('es-PA'), { size: 9, color: gray });
+    y -= 28;
+    const rows = [
+      ['Premio', card.name || '—'],
+      ['Variante', `${variant.name || ''} (${variant.abbr || ''})`],
+      ['Numeración', card.n ? `${pad(card.n, variant.total)}/${variant.total}` : '—'],
+      ['Ubicación', card.location || '—'],
+      ['Protector', variant.protector || '—'],
+      ['Entregar a', claim.name],
+      ['WhatsApp', claim.phone || '—'],
+      ['Entrega', claim.delivery || '—'],
+      ['Dirección', (claim.address || '—').slice(0, 60)]
+    ];
+    for (const [k, v] of rows) {
+      page.drawLine({ start: { x: 36, y: y + 14 }, end: { x: 360, y: y + 14 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) });
+      t(k, { size: 9, font: F.atkinson, color: gray });
+      t(String(v).slice(0, 52), { size: 10, x: 118 });
+      y -= 20;
+    }
+    const m = qrMatrix(url);
+    const size = 96;
+    const mod = size / (m.length + 4);
+    const x0 = 36;
+    const y0 = 70;
+    for (let r = 0; r < m.length; r += 1) for (let c = 0; c < m.length; c += 1) if (m[r][c]) page.drawRectangle({ x: x0 + (c + 2) * mod, y: y0 + size - (r + 3) * mod, width: mod + 0.05, height: mod + 0.05, color: ink });
+    page.drawText('Escanear desde el panel', { x: 140, y: 150, size: 9, font: F.atkinson, color: ink });
+    page.drawText('al entregar.', { x: 140, y: 138, size: 9, font: F['atkinson-regular'], color: ink });
+    page.drawLine({ start: { x: 140, y: 96 }, end: { x: 360, y: 96 }, thickness: 0.6, color: ink });
+    page.drawText('Recibido por (nombre y firma)', { x: 140, y: 84, size: 8, font: F['atkinson-regular'], color: gray });
+    page.drawText(`${edition.name} · chacalde.com`, { x: 36, y: 40, size: 8, font: F['atkinson-regular'], color: gray });
+    return ctx.doc.save();
+  }
+
+  window.MPPDF = { MM, PT_MM, CAP, LABELS, CSS_FONTS, fieldText, fitSize, qrMatrix, measureCss, isLight, buildPrint, buildSpec, buildSlip, pad };
 })();

@@ -48,17 +48,22 @@ export class MysteryPack {
         card: { trimW: 63.5, trimH: 88.9, bleed: 3, safe: 3, marks: true },
         campaign: { state: 'off', changedAt: null, changedBy: null },
         defaultDesign: null,
-        photoCheck: true
+        photoCheck: true,
+        delivery: ['Retiro en persona', 'Envío a domicilio (Panamá)']
       },
       designs: {},
       variants: {},
       cards: {},
+      claims: {},
+      seq: 0,
       exports: [],
       audit: []
     };
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8'));
       if (raw && raw.v === 1) this.data = { ...this.data, ...raw, settings: { ...this.data.settings, ...raw.settings } };
+      this.data.claims ||= {};
+      this.data.seq ||= 0;
     } catch (e) {
       if (e.code !== 'ENOENT') console.error(`mp: no se pudo leer ${this.file}: ${e.message}`);
     }
@@ -167,6 +172,10 @@ export class MysteryPack {
     }
     if ('defaultDesign' in input) s.defaultDesign = input.defaultDesign && this.data.designs[input.defaultDesign] ? input.defaultDesign : null;
     if ('photoCheck' in input) s.photoCheck = Boolean(input.photoCheck);
+    if (Array.isArray(input.delivery)) {
+      const list = input.delivery.map((d) => str(d, 60)).filter(Boolean).slice(0, 6);
+      if (list.length) s.delivery = list;
+    }
     this.log(by, 'Ajustes de la edición');
     this.save();
   }
@@ -313,12 +322,121 @@ export class MysteryPack {
     return rows;
   }
 
+  // ---------- claims (canjes) ----------
+  /** What the public page may show about a card: the prize, never the person who claimed it. */
+  publicCard(card) {
+    const v = this.data.variants[card.variantId] || {};
+    const d = this.data.designs[card.designId] || this.data.designs[v.designId] || this.data.designs[this.data.settings.defaultDesign];
+    const front = d && d.sides.front;
+    return {
+      name: card.name,
+      n: card.n,
+      total: v.total,
+      variant: v.name,
+      abbr: v.abbr,
+      color: v.color,
+      effect: v.effect,
+      edition: this.data.settings.edition.name,
+      art: front && (front.preview || front.file) ? { file: front.preview || front.file, fields: front.fields.filter((f) => f.key !== 'qr' && f.key !== 'code') } : null,
+      card: this.data.settings.card
+    };
+  }
+
+  artAllowed(file) {
+    return Object.values(this.data.designs).some((d) => d.sides.front.preview === file || d.sides.front.file === file);
+  }
+
+  /** Registers a claim. dry = preview (nothing is saved). */
+  claim(card, info, photos, { dry = false } = {}) {
+    if (card.status !== 'available') throw Object.assign(new Error('Este código ya fue canjeado.'), { code: 'taken' });
+    const s = this.data.settings;
+    const name = str(info.name, 80);
+    const phone = str(info.phone, 30).replace(/[^0-9+()\s-]/g, '');
+    const email = str(info.email, 120);
+    if (name.length < 3) throw new Error('Escribe tu nombre completo.');
+    if (phone.replace(/\D/g, '').length < 7) throw new Error('Escribe un número de WhatsApp válido.');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Revisa tu correo.');
+    const delivery = s.delivery.includes(info.delivery) ? info.delivery : s.delivery[0];
+    if (!info.consent) throw new Error('Necesitamos tu permiso para usar estos datos solo para entregarte el premio.');
+    if (s.photoCheck && (!photos.front || !photos.back)) throw new Error('Sube la foto del frente y del reverso de tu tarjeta.');
+    const no = `C-${String(this.data.seq + 1).padStart(4, '0')}`;
+    if (dry) return { no, at: now(), preview: true };
+    this.data.seq += 1;
+    const id = randomBytes(8).toString('hex');
+    this.data.claims[id] = {
+      id,
+      no,
+      cardId: card.id,
+      at: now(),
+      name,
+      phone,
+      email,
+      delivery,
+      address: str(info.address, 300),
+      notes: str(info.notes, 300),
+      photos: { front: photos.front || null, back: photos.back || null },
+      status: 'pending',
+      history: [{ at: now(), by: 'público', what: 'Canje registrado' }]
+    };
+    card.status = 'claimed';
+    card.claimId = id;
+    card.updated = now();
+    this.log('público', `Canje ${no}: ${card.name || 'carta'} (${(this.data.variants[card.variantId] || {}).abbr} ${card.n})`);
+    this.save();
+    return { no, at: this.data.claims[id].at };
+  }
+
+  setClaim(claimId, action, by, note = '') {
+    const c = this.data.claims[claimId];
+    if (!c) throw new Error('Canje no encontrado.');
+    const card = this.data.cards[c.cardId];
+    const flow = { approve: ['pending', 'approved'], prepare: ['approved', 'prepared'], deliver: ['prepared', 'delivered'], reject: [null, 'rejected'] };
+    const step = flow[action];
+    if (!step) throw new Error('Acción no válida.');
+    if (step[0] && c.status !== step[0]) throw new Error('Ese paso no corresponde al estado actual del canje.');
+    if (action === 'reject' && c.status === 'delivered') throw new Error('Ya fue entregado.');
+    c.status = step[1];
+    c.history.push({ at: now(), by, what: { approve: 'Aprobado', prepare: 'Preparado para entregar', deliver: 'Entregado', reject: `Rechazado${note ? `: ${str(note, 120)}` : ''}` }[action] });
+    if (card) {
+      if (action === 'reject') {
+        card.status = 'available';
+        card.claimId = null;
+      } else card.status = step[1] === 'approved' ? 'approved' : step[1];
+      card.updated = now();
+    }
+    if (step[1] === 'delivered') c.deliveredAt = now();
+    this.log(by, `Canje ${c.no}: ${c.history[c.history.length - 1].what}`);
+    this.save();
+    return c;
+  }
+
+  /** Personal data and photos leave 90 days after delivery (or rejection). Returns photo files to delete. */
+  purge(days = 90) {
+    const cut = Date.now() - days * 86_400_000;
+    const files = [];
+    let n = 0;
+    for (const c of Object.values(this.data.claims)) {
+      const end = c.deliveredAt || (c.status === 'rejected' ? c.history[c.history.length - 1].at : null);
+      if (!end || c.purged || new Date(end).getTime() > cut) continue;
+      if (c.photos.front) files.push(c.photos.front);
+      if (c.photos.back) files.push(c.photos.back);
+      Object.assign(c, { name: '(borrado)', phone: '', email: '', address: '', notes: '', photos: { front: null, back: null }, purged: now() });
+      n += 1;
+    }
+    if (n) {
+      this.log('sistema', `Datos personales borrados de ${n} canje(s) (más de ${days} días)`);
+      this.save();
+    }
+    return files;
+  }
+
   /** Everything the console needs, without codes. */
   view() {
     const { settings, designs, variants, exports, audit } = this.data;
     const cards = Object.values(this.data.cards)
       .sort((a, b) => (a.variantId === b.variantId ? a.n - b.n : a.variantId < b.variantId ? -1 : 1))
       .map(({ codeHash, codeEnc, ...c }) => c);
-    return { settings, designs, variants, cards, exports: exports.slice(0, 30), audit: audit.slice(0, 60), open: this.campaignOpen() };
+    const claims = Object.values(this.data.claims || {}).sort((a, b) => (a.at < b.at ? 1 : -1));
+    return { settings, designs, variants, cards, claims, exports: exports.slice(0, 30), audit: audit.slice(0, 60), open: this.campaignOpen() };
   }
 }
