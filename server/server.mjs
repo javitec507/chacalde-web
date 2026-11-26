@@ -20,7 +20,12 @@ const ADMIN_PATH = String(process.env.ADMIN_PATH || '').trim().replace(/\/+$/, '
 const PATH_OK = /^\/[a-z0-9][a-z0-9-]{9,62}$/.test(ADMIN_PATH);
 const BASE = PATH_OK ? ADMIN_PATH : null;
 const OWNER = NAME_RE.test(String(process.env.ADMIN_USER || '').trim().toLowerCase()) ? process.env.ADMIN_USER.trim().toLowerCase() : 'admin';
-const ADMIN_ENABLED = PATH_OK && ADMIN_PASSWORD.length >= 12;
+const AUTH_OK = ADMIN_PASSWORD.length >= 12;
+const ADMIN_ENABLED = PATH_OK && AUTH_OK;
+// The Mystery Pack console is its own thing: its own secret path (MP_PATH), login and cookie, apart from the metrics panel.
+const MP_PATH = String(process.env.MP_PATH || '').trim().replace(/\/+$/, '').toLowerCase();
+const MP_BASE =
+  /^\/[a-z0-9][a-z0-9-]{9,62}$/.test(MP_PATH) && MP_PATH !== BASE && !(BASE && (MP_PATH.startsWith(`${BASE}/`) || BASE.startsWith(`${MP_PATH}/`))) ? MP_PATH : null;
 const SESSION_DAYS = 7;
 // In production the admin only answers on HTTPS at this origin (never on Coolify's http test URL).
 const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN || 'https://chacalde.com';
@@ -248,16 +253,19 @@ function sessionKey() {
   }
   return createHmac('sha256', salt).update(`chacalde-admin:${ADMIN_PASSWORD}`).digest();
 }
-const SESSION_KEY = ADMIN_ENABLED ? sessionKey() : null;
+const SESSION_KEY = AUTH_OK ? sessionKey() : null;
 const COOKIE = 'chx_admin';
+const MP_COOKIE = 'chx_mp';
 const users = new Users(join(DATA, 'users.json'));
-// Mystery Pack redemption cards: console under the secret path (public claim page comes later, behind the campaign switch).
-const MP = ADMIN_ENABLED ? createMp({ dataDir: DATA, base: BASE, send: (...a) => send(...a), sameSite: (r) => sameSite(r), headers: ADMIN_HEADERS, publicHeaders: PUBLIC_HEADERS, clientIp: (r) => clientIp(r) }) : null;
+// Mystery Pack redemption cards: the store and the public /canje page (behind the campaign switch) need only the password;
+// the console needs MP_PATH too.
+const MP = AUTH_OK ? createMp({ dataDir: DATA, base: MP_BASE, send: (...a) => send(...a), sameSite: (r) => sameSite(r), headers: ADMIN_HEADERS, publicHeaders: PUBLIC_HEADERS, clientIp: (r) => clientIp(r) }) : null;
 
 // Cookie: user~version~expiry~signature. The owner is version 0; other users carry their own version,
-// so a new password or removing them ends their open sessions.
-const sign = (payload) => createHmac('sha256', SESSION_KEY).update(`panel:${payload}`).digest('base64url');
-const cookieFor = (user, ver, exp) => `${user}~${ver}~${exp}~${sign(`${user}~${ver}~${exp}`)}`;
+// so a new password or removing them ends their open sessions. The scope ("panel" or "mp") is signed in,
+// so a session for one place never opens the other.
+const sign = (scope, payload) => createHmac('sha256', SESSION_KEY).update(`${scope}:${payload}`).digest('base64url');
+const cookieFor = (scope, user, ver, exp) => `${user}~${ver}~${exp}~${sign(scope, `${user}~${ver}~${exp}`)}`;
 
 function equal(a, b) {
   const x = Buffer.from(a);
@@ -265,13 +273,18 @@ function equal(a, b) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+const COOKIE_RE = {
+  panel: /(?:^|;\s*)chx_admin=([a-z0-9._-]{3,24})~([0-9]{1,9})~([0-9]{1,15})~([A-Za-z0-9_-]{43})(?:;|$)/,
+  mp: /(?:^|;\s*)chx_mp=([a-z0-9._-]{3,24})~([0-9]{1,9})~([0-9]{1,15})~([A-Za-z0-9_-]{43})(?:;|$)/
+};
+
 // The signed-in user ({ user, owner }) or null.
-function whoIs(req) {
-  if (!ADMIN_ENABLED) return null;
-  const m = String(req.headers.cookie || '').match(/(?:^|;\s*)chx_admin=([a-z0-9._-]{3,24})~([0-9]{1,9})~([0-9]{1,15})~([A-Za-z0-9_-]{43})(?:;|$)/);
+function whoIs(req, scope = 'panel') {
+  if (!SESSION_KEY) return null;
+  const m = String(req.headers.cookie || '').match(COOKIE_RE[scope]);
   if (!m) return null;
   const [, user, ver, exp, sig] = m;
-  if (Number(exp) <= Date.now() || !equal(sig, sign(`${user}~${ver}~${exp}`))) return null;
+  if (Number(exp) <= Date.now() || !equal(sig, sign(scope, `${user}~${ver}~${exp}`))) return null;
   if (user === OWNER) return ver === '0' ? { user, owner: true } : null;
   const u = users.get(user);
   return u && String(u.ver) === ver ? { user, owner: false } : null;
@@ -287,6 +300,57 @@ const LOGIN_WINDOW = 15 * 60_000;
 const LOGIN_MAX = 5;
 const logins = new Map(); // ip -> { fails, since }
 
+// POST <base>/login for the panel and for the Mystery Pack console (same users, separate sessions).
+async function handleLogin(req, res, { B, h, scope, cookie, page }) {
+  const html = (status, body, extra = {}) => send(res, status, body, { ...h, 'Content-Type': 'text/html; charset=utf-8', ...extra });
+  if (req.method !== 'POST') return send(res, 303, '', { ...h, Location: B });
+  if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
+  const ip = clientIp(req);
+  const now = Date.now();
+  let a = logins.get(ip);
+  if (!a || now - a.since > LOGIN_WINDOW) logins.set(ip, (a = { fails: 0, since: now }));
+  if (a.fails >= LOGIN_MAX) return html(429, page({ error: 'Demasiados intentos. Espera 15 minutos.' }), { 'Retry-After': '900' });
+  const body = await readBody(req, 2048);
+  const form = new URLSearchParams(body === null ? '' : body);
+  const user = String(form.get('user') || '').trim().toLowerCase().slice(0, 24);
+  const pw = form.get('password') || '';
+  let ver = null;
+  if (user === OWNER) ver = passwordOk(pw) ? 0 : null;
+  else if (NAME_RE.test(user)) ver = await users.verify(user, pw);
+  if (ver === null) {
+    a.fails += 1;
+    await new Promise((r) => setTimeout(r, 700));
+    return html(401, page({ user, error: 'Usuario o contraseña incorrectos.' }));
+  }
+  logins.delete(ip);
+  const exp = now + SESSION_DAYS * 86_400_000;
+  return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie(cookieFor(scope, user, ver, exp), SESSION_DAYS * 86400) });
+}
+
+// Mystery Pack console: /<MP_PATH>/... (nothing here mentions the metrics panel).
+async function handleMp(req, res, path) {
+  const h = ADMIN_HEADERS;
+  const B = MP_BASE;
+  if (PROD && (req.headers['x-forwarded-proto'] !== 'https' || `https://${req.headers.host}` !== ADMIN_ORIGIN)) {
+    return send(res, 308, '', { ...h, Location: `${ADMIN_ORIGIN}${B}` });
+  }
+  if (!MP) return send(res, 503, renderDisabled(), { ...h, 'Content-Type': 'text/html; charset=utf-8' });
+  const cookie = (value, maxAge) => `${MP_COOKIE}=${value}; Path=${B}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`;
+  const page = (o = {}) => renderLogin({ base: B, title: 'Entrar · Chacalde Mystery Pack', heading: 'Mystery Pack', note: 'Consola de Redemption Cards. Acceso solo para el equipo.', ...o });
+  const sub = path.slice(B.length) || '/';
+  if (sub === '/login') return handleLogin(req, res, { B, h, scope: 'mp', cookie, page });
+  if (sub === '/logout') {
+    if (req.method !== 'POST' || !sameSite(req)) return send(res, 303, '', { ...h, Location: B });
+    return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie('', 0) });
+  }
+  const me = whoIs(req, 'mp');
+  if (!me) {
+    if (sub === '/' && (req.method === 'GET' || req.method === 'HEAD')) return send(res, 200, page(), { ...h, 'Content-Type': 'text/html; charset=utf-8' });
+    return sub.startsWith('/api/') || sub.startsWith('/canje-api/') ? send(res, 401, 'Unauthorized', h) : send(res, 303, '', { ...h, Location: B });
+  }
+  return MP.handle(req, res, sub, me);
+}
+
 async function handleAdmin(req, res, url, path) {
   const h = ADMIN_HEADERS;
   const B = BASE;
@@ -298,42 +362,14 @@ async function handleAdmin(req, res, url, path) {
   const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=${B}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`;
   const sub = path.slice(B.length) || '/';
 
-  if (sub === '/login') {
-    if (req.method !== 'POST') return send(res, 303, '', { ...h, Location: B });
-    if (!sameSite(req)) return send(res, 403, 'Forbidden', h);
-    const ip = clientIp(req);
-    const now = Date.now();
-    let a = logins.get(ip);
-    if (!a || now - a.since > LOGIN_WINDOW) logins.set(ip, (a = { fails: 0, since: now }));
-    if (a.fails >= LOGIN_MAX) return html(429, renderLogin({ base: B, error: 'Demasiados intentos. Espera 15 minutos.' }), { 'Retry-After': '900' });
-    const body = await readBody(req, 2048);
-    const form = new URLSearchParams(body === null ? '' : body);
-    const user = String(form.get('user') || '').trim().toLowerCase().slice(0, 24);
-    const pw = form.get('password') || '';
-    let ver = null;
-    if (user === OWNER) ver = passwordOk(pw) ? 0 : null;
-    else if (NAME_RE.test(user)) ver = await users.verify(user, pw);
-    if (ver === null) {
-      a.fails += 1;
-      await new Promise((r) => setTimeout(r, 700));
-      return html(401, renderLogin({ base: B, user, error: 'Usuario o contraseña incorrectos.' }));
-    }
-    logins.delete(ip);
-    const exp = now + SESSION_DAYS * 86_400_000;
-    return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie(cookieFor(user, ver, exp), SESSION_DAYS * 86400) });
-  }
+  if (sub === '/login') return handleLogin(req, res, { B, h, scope: 'panel', cookie, page: (o = {}) => renderLogin({ base: B, ...o }) });
 
   if (sub === '/logout') {
     if (req.method !== 'POST' || !sameSite(req)) return send(res, 303, '', { ...h, Location: B });
     return send(res, 303, '', { ...h, Location: B, 'Set-Cookie': cookie('', 0) });
   }
 
-  const me = whoIs(req);
-
-  if (sub === '/mp' || sub.startsWith('/mp/')) {
-    if (!me) return sub === '/mp' ? send(res, 303, '', { ...h, Location: B }) : send(res, 401, 'Unauthorized', h);
-    return MP.handle(req, res, sub, me);
-  }
+  const me = whoIs(req, 'panel');
 
   if (sub === '/usuarios' && req.method === 'POST') {
     if (!me || !me.owner) return send(res, 404, 'Not Found', h);
@@ -412,6 +448,7 @@ const server = http.createServer(async (req, res) => {
       if ((await MP.publicHandle(req, res, path)) !== false) return;
     }
     if (BASE && (path === BASE || path.startsWith(`${BASE}/`))) return await handleAdmin(req, res, url, path.replace(/\/+$/, '') || '/');
+    if (MP_BASE && (path === MP_BASE || path.startsWith(`${MP_BASE}/`))) return await handleMp(req, res, path.replace(/\/+$/, '') || '/');
     return serveStatic(req, res, path);
   } catch (e) {
     console.error(e);
@@ -427,7 +464,8 @@ server.listen(PORT, () => {
   const panel = ADMIN_ENABLED
     ? `panel on (secret path set, owner "${OWNER}", ${users.list().length} extra users)`
     : `panel off (${PATH_OK ? '' : 'set ADMIN_PATH, e.g. /sala- + 10 random letters; '}${ADMIN_PASSWORD.length >= 12 ? '' : 'set ADMIN_PASSWORD, 12+ chars'})`;
-  console.log(`chacalde-web on :${PORT} · ${files.size} files · data in ${DATA} · ${panel}`);
+  const mp = MP_BASE && MP ? 'mystery pack console on (own secret path)' : `mystery pack console off (${MP_BASE ? '' : 'set MP_PATH, e.g. /boveda- + 10 random letters; '}${AUTH_OK ? '' : 'set ADMIN_PASSWORD'})`;
+  console.log(`chacalde-web on :${PORT} · ${files.size} files · data in ${DATA} · ${panel} · ${mp}`);
 });
 
 function shutdown() {

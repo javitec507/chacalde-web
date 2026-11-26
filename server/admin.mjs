@@ -107,10 +107,10 @@ function topbar(base, me, current) {
     `${base}/compartir`,
     'Imagen para compartir',
     'share'
-  )}${link(`${base}/mp`, 'Mystery Pack', 'mp')}${me.owner ? link(`${base}/usuarios`, 'Usuarios', 'users') : ''}<a class="btn" href="${base}/export.csv">CSV</a><form method="post" action="${base}/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>`;
+  )}${me.owner ? link(`${base}/usuarios`, 'Usuarios', 'users') : ''}<a class="btn" href="${base}/export.csv">CSV</a><form method="post" action="${base}/logout"><button class="btn" type="submit">Salir</button></form></nav></div></header>`;
 }
 
-export function renderLogin({ base, error = '', user = '' }) {
+export function renderLogin({ base, error = '', user = '', title = 'Entrar · Panel Chacalde', heading = 'Panel de métricas', note = 'Acceso solo para administración.' }) {
   const css = `
 .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
 .box{width:100%;max-width:420px;background:#fff;color:var(--ink);padding:32px 30px 26px;border-radius:2px}
@@ -123,11 +123,11 @@ input:focus{outline:3px solid var(--ink);outline-offset:3px}
 button{margin-top:16px;width:100%;height:54px;border:0;background:var(--ink);color:#fff;font-family:Archivo,'Arial Narrow',sans-serif;font-style:italic;font-weight:900;font-stretch:80%;font-size:21px;text-transform:uppercase;cursor:pointer;border-radius:0}
 .err{margin-top:14px;color:#b00020;font-weight:700}`;
   return page({
-    title: 'Entrar · Panel Chacalde',
+    title,
     body: `<style>${css}</style><main class="wrap"><form class="box" method="post" action="${base}/login">
 <img src="/img/logo-white.png" alt="Chacalde" width="800" height="286">
-<h1 class="display">Panel de métricas</h1>
-<p>Acceso solo para administración.</p>
+<h1 class="display">${esc(heading)}</h1>
+<p>${esc(note)}</p>
 <label for="user">Usuario</label>
 <input id="user" name="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required ${user ? '' : 'autofocus '}maxlength="24" value="${esc(user)}">
 <label for="pw">Contraseña</label>
