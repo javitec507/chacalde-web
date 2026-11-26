@@ -27,7 +27,7 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 80px}
 .tk-item svg{flex:none}
 
 /* landing */
-.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:center;padding-top:44px;min-height:calc(100vh - 140px)}
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:center;padding-top:clamp(20px,4svh,44px);min-height:calc(100svh - 140px)}
 .hero--reveal{padding-top:36px}
 .hero-copy .h1{max-width:12ch}
 .lead{color:#d6d6d6;font-size:17px;max-width:42ch;margin:16px 0 0}
@@ -50,7 +50,7 @@ main{max-width:1080px;margin:0 auto;padding:0 20px 80px}
 
 /* the landing's card: floats, flips, points at the code */
 .hero-card{display:flex;flex-direction:column;align-items:center;gap:14px}
-.hc-float{width:min(52vw,360px);perspective:1200px}
+.hc-float{width:clamp(200px,calc((100svh - 240px) * .75),360px);perspective:1200px}
 .hc-tilt{--mx:50%;--my:50%;--rx:0deg;--ry:0deg;display:block;width:100%;padding:0;border:0;background:none;cursor:pointer;transform:rotateX(var(--rx)) rotateY(var(--ry));transform-style:preserve-3d;transition:transform .14s ease-out;-webkit-tap-highlight-color:transparent}
 .hc-tilt:focus-visible{outline:3px solid #fff;outline-offset:8px;border-radius:14px}
 .hc-flip{position:relative;width:100%;aspect-ratio:1086/1448;transform-style:preserve-3d}
